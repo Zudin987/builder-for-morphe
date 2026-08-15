@@ -9,7 +9,7 @@ uptodown-dlurl = "https://youtube.en.uptodown.com/android"
 "github:MorpheApp/morphe-patches" = []
 
 [YT-Music]
-enabled = false
+enabled = true
 apkmirror-dlurl = "https://www.apkmirror.com/apk/google-inc/youtube-music"
 uptodown-dlurl = "https://youtube-music.en.uptodown.com/android"
 arch = "both"
@@ -18,7 +18,7 @@ arch = "both"
 "github:MorpheApp/morphe-patches" = []
 
 [Reddit]
-enabled = false
+enabled = true
 apkmirror-dlurl = "https://www.apkmirror.com/apk/redditinc/reddit"
 uptodown-dlurl = "https://reddit-official-app.en.uptodown.com/android"
 
@@ -434,7 +434,7 @@ changelog-keywords = ["Plus Messenger"]
 "gitlab:Paresh-Maheshwari/paresh-patches" = []
 
 [Proton-VPN_paresh]
-enabled = false
+enabled = true
 brand = "paresh"
 app-name = "Proton VPN"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/proton-technologies-ag/protonvpn-secure-and-free-vpn/"
@@ -445,7 +445,7 @@ changelog-keywords = ["Proton VPN"]
 "gitlab:Paresh-Maheshwari/paresh-patches" = []
 
 [Telegram]
-enabled = false
+enabled = true
 brand = "paresh"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/telegram-fz-llc/telegram-web-version/"
 uptodown-dlurl = "https://telegram.en.uptodown.com/android"
@@ -465,7 +465,7 @@ changelog-keywords = ["TickTick"]
 "gitlab:Paresh-Maheshwari/paresh-patches" = []
 
 [Truecaller]
-enabled = false
+enabled = true
 brand = "paresh"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/true-software-scandinavia-ab/truecaller-caller-id-block/"
 uptodown-dlurl = "https://truecaller.en.uptodown.com/android"
@@ -657,7 +657,7 @@ changelog-keywords = ["TV", "Remote"]
 "github:rushiranpise/morphe-patches" = []
 
 [Waze]
-enabled = false
+enabled = true
 brand = "rushi"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/waze/waze-gps-maps-traffic-alerts-live-navigation/"
 uptodown-dlurl = "https://waze.en.uptodown.com/android"
@@ -677,7 +677,7 @@ changelog-keywords = ["Windscribe"]
 "github:rushiranpise/morphe-patches" = []
 
 [Adobe-Acrobat-Reader] 
-enabled = false
+enabled = true
 brand = "hooman"
 github-dlurl = "https://github.com/nvbangg/builder-for-morphe/releases/tag/com.adobe.reader"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/adobe/adobe-acrobat/"
@@ -806,7 +806,7 @@ uptodown-dlurl = "https://disney-disneyplus.en.uptodown.com/android"
 "github:RookieEnough/De-Vanced" = []
 
 [Facebook]
-enabled = false
+enabled = true
 brand = "de-vanced"
 github-dlurl = "https://github.com/nvbangg/builder-for-morphe/releases/tag/com.facebook.katana"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/facebook-2/facebook/"
@@ -977,7 +977,7 @@ apkmirror-dlurl = "https://www.apkmirror.com/apk/viber-media-s-a-r-l/viber/"
 "github:RookieEnough/De-Vanced" = []
 
 [YouTube_anddea]
-enabled = false
+enabled = true
 brand = "anddea"
 app-name = "YouTube"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/google-inc/youtube"
