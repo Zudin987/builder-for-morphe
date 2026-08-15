@@ -9,7 +9,7 @@ uptodown-dlurl = "https://youtube.en.uptodown.com/android"
 "github:MorpheApp/morphe-patches" = []
 
 [YT-Music]
-enabled = true
+enabled = false
 apkmirror-dlurl = "https://www.apkmirror.com/apk/google-inc/youtube-music"
 uptodown-dlurl = "https://youtube-music.en.uptodown.com/android"
 arch = "both"
@@ -18,7 +18,7 @@ arch = "both"
 "github:MorpheApp/morphe-patches" = []
 
 [Reddit]
-enabled = true
+enabled = false
 apkmirror-dlurl = "https://www.apkmirror.com/apk/redditinc/reddit"
 uptodown-dlurl = "https://reddit-official-app.en.uptodown.com/android"
 
@@ -60,7 +60,7 @@ patcher-args = "-e 'Custom branding name for Reddit' -OappName='Reddit Morphe'"
 "github:MorpheApp/morphe-patches" = { version = "dev" }
 
 [X-Twitter]
-enabled = true
+enabled = false
 brand = "piko"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/x-corp/twitter"
 uptodown-dlurl = "https://twitter.en.uptodown.com/android"
@@ -69,7 +69,7 @@ uptodown-dlurl = "https://twitter.en.uptodown.com/android"
 "github:crimera/piko" = ["Browse tweet object", "Dynamic color"]
 
 [Instagram]
-enabled = true
+enabled = false
 brand = "piko"
 github-dlurl = "https://github.com/krvstek/uni-storage/releases/tag/instagram"
 # apkmirror-dlurl = "https://www.apkmirror.com/apk/instagram/instagram-instagram"
