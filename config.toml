@@ -977,7 +977,7 @@ apkmirror-dlurl = "https://www.apkmirror.com/apk/viber-media-s-a-r-l/viber/"
 "github:RookieEnough/De-Vanced" = []
 
 [YouTube_anddea]
-enabled = true
+enabled = false
 brand = "anddea"
 app-name = "YouTube"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/google-inc/youtube"
