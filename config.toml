@@ -433,19 +433,6 @@ changelog-keywords = ["Plus Messenger"]
 [Plus-Messenger.patches]
 "gitlab:Paresh-Maheshwari/paresh-patches" = []
 
-[Proton-VPN_rushi]
-enabled = true
-brand = "rushi"
-app-name = "Proton VPN"
-
-apkmirror-dlurl = "https://www.apkmirror.com/apk/proton-technologies-ag/protonvpn-secure-and-free-vpn/"
-uptodown-dlurl = "https://protonvpn.en.uptodown.com/android"
-
-changelog-keywords = ["Proton VPN"]
-
-[Proton-VPN_rushi.patches]
-"github:rushiranpise/morphe-patches" = []
-
 [Telegram]
 enabled = true
 brand = "paresh"
@@ -587,11 +574,13 @@ changelog-keywords = ["Photo Editor"]
 "github:rushiranpise/morphe-patches" = []
 
 [Proton-VPN_rushi]
-enabled = false
+enabled = true
 brand = "rushi"
 app-name = "Proton VPN"
+
 apkmirror-dlurl = "https://www.apkmirror.com/apk/proton-technologies-ag/protonvpn-secure-and-free-vpn/"
 uptodown-dlurl = "https://protonvpn.en.uptodown.com/android"
+
 changelog-keywords = ["Proton VPN"]
 
 [Proton-VPN_rushi.patches]
