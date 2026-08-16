@@ -437,8 +437,12 @@ changelog-keywords = ["Plus Messenger"]
 enabled = true
 brand = "paresh"
 app-name = "Proton VPN"
+
+version = "5.19.16.0"
+
 apkmirror-dlurl = "https://www.apkmirror.com/apk/proton-technologies-ag/protonvpn-secure-and-free-vpn/"
 uptodown-dlurl = "https://protonvpn.en.uptodown.com/android"
+
 changelog-keywords = ["Proton VPN"]
 
 [Proton-VPN_paresh.patches]
@@ -659,8 +663,13 @@ changelog-keywords = ["TV", "Remote"]
 [Waze]
 enabled = true
 brand = "rushi"
+
+version = "5.22.0.3"
+arch = "arm64-v8a"
+
 apkmirror-dlurl = "https://www.apkmirror.com/apk/waze/waze-gps-maps-traffic-alerts-live-navigation/"
 uptodown-dlurl = "https://waze.en.uptodown.com/android"
+
 changelog-keywords = ["Waze"]
 
 [Waze.patches]
@@ -950,13 +959,15 @@ arch = "both"
 "github:RookieEnough/De-Vanced" = []
 
 [TikTok]
-enabled = false
-brand = "de-vanced"
+enabled = true
+brand = "metra"
+version = "auto"
+
 apkmirror-dlurl = "https://www.apkmirror.com/apk/tiktok-pte-ltd/tik-tok-including-musical-ly/"
 uptodown-dlurl = "https://tiktok.en.uptodown.com/android"
 
 [TikTok.patches]
-"github:RookieEnough/De-Vanced" = []
+"github:icysymmetra/tiktok-patches-for-morphe" = []
 
 [Tumblr_de-vanced]
 app-name = "Tumblr"
@@ -996,3 +1007,34 @@ arch = "both"
 
 [YT-Music_anddea.patches]
 "github:anddea/revanced-patches" = { exclude = ["Visual preferences icons for YouTube Music"] }
+
+[Brave]
+enabled = true
+brand = "bufferk"
+app-name = "Brave"
+
+version = "1.92.140"
+arch = "arm64-v8a"
+
+apkmirror-dlurl = "https://www.apkmirror.com/apk/brave-software/brave-browser/"
+uptodown-dlurl = "https://brave-software-brave.en.uptodown.com/android"
+
+changelog-keywords = ["Brave"]
+
+[Brave.patches]
+"github:bufferk/morphe-patches" = []
+
+[Backdrops]
+enabled = true
+brand = "xtra"
+app-name = "Backdrops"
+
+version = "6.1.2"
+
+apkmirror-dlurl = "https://www.apkmirror.com/apk/backdrops/backdrops-wallpapers/"
+uptodown-dlurl = "https://backdrops.en.uptodown.com/android"
+
+changelog-keywords = ["Backdrops"]
+
+[Backdrops.patches]
+"github:BholeyKaBhakt/android-patches-xtra" = []
