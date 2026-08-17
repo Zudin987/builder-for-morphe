@@ -2,6 +2,9 @@ name: CI
 on:
   push:
     branches: [main]
+    paths:
+      - 'config.toml'
+      - '.github/workflows/**'
   schedule:
     - cron: '0 10 * * *'
   workflow_dispatch:
@@ -11,6 +14,10 @@ on:
         required: true
         type: boolean
         default: false
+
+concurrency:
+  group: morphe-ci
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -61,6 +68,7 @@ jobs:
     if: needs.check-versions.outputs.build_matrix != '[]' && needs.check-versions.outputs.build_matrix != ''
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         patch_source: ${{ fromJSON(needs.check-versions.outputs.build_matrix) }}
     uses: ./.github/workflows/build.yml
