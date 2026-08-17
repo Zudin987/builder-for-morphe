@@ -7,6 +7,9 @@ You can use [this repository](https://github.com/nvbangg/builder-for-morphe) to 
 
 </div>
 
+> [!IMPORTANT]
+> **Safety change in this fork:** generated APK releases stay as private GitHub draft releases by default. The workflow will not make APKs public unless the repository variable `ALLOW_PUBLIC_APK_RELEASES` is deliberately set to `true`. Only publish third-party app binaries when you have the necessary redistribution rights.
+
 <details>
 <summary id="features"><b>🔥 Features</b></summary>
 
@@ -14,7 +17,7 @@ You can use [this repository](https://github.com/nvbangg/builder-for-morphe) to 
 - 🧩 **Many pre-configured apps:** just set `enabled = true` for the apps you want.
 - 🏗️ **Template support:** use this repository as a [template](https://github.com/new?template_name=builder-for-morphe&template_owner=nvbangg) for private builds or personal development.
 - 🔁 **[Automatic upstream sync](CONTRIBUTING.md#-sync-upstream):** pull in bug fixes and new features while still preserving your own configuration.
-- 🔄 **Auto-updates:** supports automatic updates through [Obtainium](https://github.com/ImranR98/Obtainium) using releases from your own fork.
+- 🔄 **Auto-updates:** supported when you intentionally enable public releases; public release publishing is disabled by default in this fork.
 - ✨ **And much more!**
 </details>
 
@@ -23,7 +26,8 @@ You can use [this repository](https://github.com/nvbangg/builder-for-morphe) to 
 1. 🍴 `Fork` [this repo](https://github.com/nvbangg/builder-for-morphe) (don't forget to ⭐ `Star` and 👀 `Watch` it)
     - ⚙️ **[Optional]** Customize the apps you want in [`config.toml`](config.toml)
 2. 🚀 Run the [CI workflow](../../actions/workflows/ci.yml) (make sure workflows are enabled first)
-3. ⬇️ Download your APKs from [Releases](../../releases)
+3. 🔒 Generated APKs are kept in a **draft Release** by default so they are not publicly distributed.
+4. If you have redistribution rights for every included app and intentionally want public Releases, create the repository variable `ALLOW_PUBLIC_APK_RELEASES=true`.
 
 ## 📚 Documentation & Contributing
 
@@ -56,8 +60,8 @@ This project is open-source and distributed under the **[GNU GPLv3](LICENSE)** l
 <summary><h3>⚠️ Disclaimer</h3></summary>
 
 - [This project](https://github.com/nvbangg/builder-for-morphe) is not affiliated with [Morphe](https://morphe.software/) or any authors mentioned here.
-- This project is intended for educational and research purposes only, and is not responsible for any issues arising from its use.
+- This project is intended for educational, research and personal build workflows.
 - All builds are done using publicly available tools. This repository simply automates the process for convenience.
-- This repository does not provide pre-patched APKs. Releases only contain unmodified APKs used for building.
-- Everything happens through public GitHub Actions to ensure security and transparency.
+- The workflow can produce patched third-party APKs. Public publication is disabled by default in this fork; do not publish third-party binaries unless you have the necessary rights.
+- Everything happens through GitHub Actions for transparency.
 </details>
