@@ -36,6 +36,7 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       version: ${{ steps.version.outputs.version }}
+      release_id: ${{ steps.version.outputs.release_id }}
       prerelease: ${{ steps.set-matrix.outputs.prerelease }}
     steps:
       - name: Checkout
@@ -59,13 +60,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           VER="$(date +%y.%m.%d)-${{ inputs.patch_source }}"
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
-          if gh release view "$VER" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release edit "$VER" --draft --repo "$GITHUB_REPOSITORY"
+
+          RELEASE_ID="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$VER\") | .id" | head -n1)"
+
+          if [[ -n "$RELEASE_ID" ]]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -F draft=true >/dev/null
           else
-            gh release create "$VER" --draft --title "$VER" --notes "" --repo "$GITHUB_REPOSITORY"
+            RESPONSE="$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$VER" -f name="$VER" -f body="" -F draft=true -F prerelease=false)"
+            RELEASE_ID="$(jq -r '.id' <<<"$RESPONSE")"
           fi
+
+          echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
 
       - name: Set matrix based on patch source
         id: set-matrix
@@ -84,6 +94,7 @@ jobs:
       contents: write
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
 
     steps:
@@ -170,9 +181,10 @@ jobs:
         id: check
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.prepare.outputs.version }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
         run: |
-          has=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '[.assets[].name | select(endswith(".apk"))] | length > 0')
+          has=$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            --jq '[.assets[].name | select(endswith(".apk"))] | length > 0')
           echo "has_apks=${has}" >> "$GITHUB_OUTPUT"
 
       - name: Keep APK builds private when explicitly disabled
@@ -180,29 +192,38 @@ jobs:
         run: |
           echo "::notice::APK build completed. The GitHub Release remains a private draft because ALLOW_PUBLIC_APK_RELEASES is explicitly set to false."
 
-      - name: Download logs from draft release
+      - name: Download and remove build logs
         if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES != 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.prepare.outputs.version }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
         run: |
+          set -euo pipefail
           mkdir -p logs
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "build-*.md" --dir logs
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[] | select(.name | startswith("build-")) | .apiUrl' | xargs -I{} gh api --method DELETE "{}"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
+            --jq '.[] | select(.name | startswith("build-")) | [.id, .name] | @tsv' |
+          while IFS=$'\t' read -r asset_id asset_name; do
+            [[ -n "$asset_id" ]] || continue
+            gh api -H "Accept: application/octet-stream" \
+              "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "logs/$asset_name"
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+          done
 
       - name: Combine logs and finalize release
         if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES != 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.prepare.outputs.version }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
           PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
         run: |
+          set -euo pipefail
           uv run python -m src.scripts.logs combine-logs logs | sed "s/{TAG}/$TAG/g" > final.md
-          if [ "$PRERELEASE" = "true" ]; then
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --title "$TAG" --notes-file final.md
-          else
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --title "$TAG" --notes-file final.md
-          fi
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            -F draft=false \
+            -F prerelease="$PRERELEASE" \
+            -f name="$TAG" \
+            -f body="$(cat final.md)" >/dev/null
 
       - name: Send Telegram notification
         if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES != 'false' && env.TG_TOKEN != '' && env.TG_CHAT != ''
@@ -215,5 +236,5 @@ jobs:
         if: steps.check.outputs.has_apks != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.prepare.outputs.version }}
-        run: gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes || true
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+        run: gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" || true
