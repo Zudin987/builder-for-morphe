@@ -58,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/uv-bin"
-          curl -LsSf https://astral.sh/uv/0.12.0/install.sh | env UV_UNMANAGED_INSTALL="$RUNNER_TEMP/uv-bin" sh
+          curl --retry 6 --retry-all-errors --retry-delay 3 -LsSf https://astral.sh/uv/0.12.0/install.sh | env UV_UNMANAGED_INSTALL="$RUNNER_TEMP/uv-bin" sh
           echo "$RUNNER_TEMP/uv-bin" >> "$GITHUB_PATH"
 
       - name: Install dependencies
@@ -71,25 +71,46 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          gh_retry() {
+            local attempt=1 max_attempts=8 delay=3
+            while true; do
+              if gh "$@"; then
+                return 0
+              fi
+              local rc=$?
+              if (( attempt >= max_attempts )); then
+                echo "GitHub API still failing after ${attempt} attempts" >&2
+                return "$rc"
+              fi
+              echo "GitHub API temporary failure; retry ${attempt}/${max_attempts} in ${delay}s" >&2
+              sleep "$delay"
+              attempt=$((attempt + 1))
+              if (( delay < 24 )); then delay=$((delay * 2)); fi
+            done
+          }
+
           VER="$(date +%y.%m.%d)-${{ inputs.patch_source }}"
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
 
-          # Draft releases can exist multiple times for the same tag. Remove every
-          # old release object for today's tag so uploads and publishing cannot
-          # accidentally target different drafts. Existing git tags are kept.
+          # Remove stale duplicate release objects for today's source/tag.
+          # Retry GitHub's API because transient 502/503 responses are common
+          # during large workflow batches and should not fail a healthy APK build.
+          RELEASES_JSON="$(gh_retry api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100")"
           mapfile -t OLD_RELEASE_IDS < <(
-            gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-              --jq ".[] | select(.tag_name == \"$VER\") | .id"
+            jq -r --arg ver "$VER" '.[] | select(.tag_name == $ver) | .id' <<<"$RELEASES_JSON"
           )
           for release_id in "${OLD_RELEASE_IDS[@]:-}"; do
             [[ -n "$release_id" ]] || continue
             echo "Removing stale release object $release_id for $VER"
-            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id" || true
+            gh_retry api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$release_id" >/dev/null
           done
 
-          RESPONSE="$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+          RESPONSE="$(gh_retry api --method POST "repos/$GITHUB_REPOSITORY/releases" \
             -f tag_name="$VER" -f name="$VER" -f body="" -F draft=true -F prerelease=false)"
           RELEASE_ID="$(jq -r '.id' <<<"$RESPONSE")"
+          test -n "$RELEASE_ID"
+          test "$RELEASE_ID" != "null"
           echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
           echo "Prepared release $RELEASE_ID for $VER"
 
@@ -146,7 +167,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/uv-bin"
-          curl -LsSf https://astral.sh/uv/0.12.0/install.sh | env UV_UNMANAGED_INSTALL="$RUNNER_TEMP/uv-bin" sh
+          curl --retry 6 --retry-all-errors --retry-delay 3 -LsSf https://astral.sh/uv/0.12.0/install.sh | env UV_UNMANAGED_INSTALL="$RUNNER_TEMP/uv-bin" sh
           echo "$RUNNER_TEMP/uv-bin" >> "$GITHUB_PATH"
 
       - name: Install dependencies
@@ -168,6 +189,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          gh_retry() {
+            local attempt=1 max_attempts=8 delay=3
+            while true; do
+              if gh "$@"; then return 0; fi
+              local rc=$?
+              if (( attempt >= max_attempts )); then return "$rc"; fi
+              echo "GitHub API temporary failure; retry ${attempt}/${max_attempts} in ${delay}s" >&2
+              sleep "$delay"
+              attempt=$((attempt + 1))
+              if (( delay < 24 )); then delay=$((delay * 2)); fi
+            done
+          }
+
           shopt -s nullglob
           apks=(./build/*.apk)
           if [[ ${#apks[@]} -eq 0 ]]; then
@@ -180,12 +215,12 @@ jobs:
             local name encoded existing_id
             name="$(basename "$file")"
             encoded="$(jq -rn --arg v "$name" '$v|@uri')"
-            existing_id="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
+            existing_id="$(gh_retry api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
               --jq ".[] | select(.name == \"$name\") | .id" | head -n1)"
             if [[ -n "$existing_id" ]]; then
-              gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$existing_id"
+              gh_retry api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$existing_id" >/dev/null
             fi
-            curl --fail-with-body -sS -L -X POST \
+            curl --retry 8 --retry-all-errors --retry-delay 3 --fail-with-body -sS -L -X POST \
               -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer $GITHUB_TOKEN" \
               -H "X-GitHub-Api-Version: 2026-03-10" \
@@ -208,16 +243,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          gh_retry() {
+            local attempt=1 max_attempts=8 delay=3
+            while true; do
+              if gh "$@"; then return 0; fi
+              local rc=$?
+              if (( attempt >= max_attempts )); then return "$rc"; fi
+              echo "GitHub API temporary failure; retry ${attempt}/${max_attempts} in ${delay}s" >&2
+              sleep "$delay"
+              attempt=$((attempt + 1))
+              if (( delay < 24 )); then delay=$((delay * 2)); fi
+            done
+          }
+
           [[ -f build.md && -s build.md ]] || exit 0
           file="build-${LABEL}.md"
           cp build.md "$file"
           encoded="$(jq -rn --arg v "$file" '$v|@uri')"
-          existing_id="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
+          existing_id="$(gh_retry api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
             --jq ".[] | select(.name == \"$file\") | .id" | head -n1)"
           if [[ -n "$existing_id" ]]; then
-            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$existing_id"
+            gh_retry api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$existing_id" >/dev/null
           fi
-          curl --fail-with-body -sS -L -X POST \
+          curl --retry 8 --retry-all-errors --retry-delay 3 --fail-with-body -sS -L -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "X-GitHub-Api-Version: 2026-03-10" \
@@ -246,7 +295,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/uv-bin"
-          curl -LsSf https://astral.sh/uv/0.12.0/install.sh | env UV_UNMANAGED_INSTALL="$RUNNER_TEMP/uv-bin" sh
+          curl --retry 6 --retry-all-errors --retry-delay 3 -LsSf https://astral.sh/uv/0.12.0/install.sh | env UV_UNMANAGED_INSTALL="$RUNNER_TEMP/uv-bin" sh
           echo "$RUNNER_TEMP/uv-bin" >> "$GITHUB_PATH"
 
       - name: Install dependencies
@@ -260,7 +309,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          has=$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+          gh_retry() {
+            local attempt=1 max_attempts=8 delay=3
+            while true; do
+              if gh "$@"; then return 0; fi
+              local rc=$?
+              if (( attempt >= max_attempts )); then return "$rc"; fi
+              echo "GitHub API temporary failure; retry ${attempt}/${max_attempts} in ${delay}s" >&2
+              sleep "$delay"
+              attempt=$((attempt + 1))
+              if (( delay < 24 )); then delay=$((delay * 2)); fi
+            done
+          }
+          has=$(gh_retry api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
             --jq '[.assets[].name | select(endswith(".apk"))] | length > 0')
           echo "has_apks=${has}" >> "$GITHUB_OUTPUT"
           echo "Release has APKs: $has"
@@ -277,15 +338,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          gh_retry() {
+            local attempt=1 max_attempts=8 delay=3
+            while true; do
+              if gh "$@"; then return 0; fi
+              local rc=$?
+              if (( attempt >= max_attempts )); then return "$rc"; fi
+              echo "GitHub API temporary failure; retry ${attempt}/${max_attempts} in ${delay}s" >&2
+              sleep "$delay"
+              attempt=$((attempt + 1))
+              if (( delay < 24 )); then delay=$((delay * 2)); fi
+            done
+          }
+
           mkdir -p logs
-          gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" \
-            --jq '.[] | select(.name | startswith("build-")) | [.id, .name] | @tsv' |
+          ASSETS_JSON="$(gh_retry api --paginate "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100")"
           while IFS=$'\t' read -r asset_id asset_name; do
             [[ -n "$asset_id" ]] || continue
-            gh api -H "Accept: application/octet-stream" \
+            gh_retry api -H "Accept: application/octet-stream" \
               "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "logs/$asset_name"
-            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
-          done
+            gh_retry api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" >/dev/null
+          done < <(jq -r '.[] | select(.name | startswith("build-")) | [.id, .name] | @tsv' <<<"$ASSETS_JSON")
 
       - name: Combine logs and finalize release
         if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES != 'false'
@@ -297,12 +371,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          gh_retry() {
+            local attempt=1 max_attempts=8 delay=3
+            while true; do
+              if gh "$@"; then return 0; fi
+              local rc=$?
+              if (( attempt >= max_attempts )); then return "$rc"; fi
+              echo "GitHub API temporary failure; retry ${attempt}/${max_attempts} in ${delay}s" >&2
+              sleep "$delay"
+              attempt=$((attempt + 1))
+              if (( delay < 24 )); then delay=$((delay * 2)); fi
+            done
+          }
+
           if compgen -G 'logs/*.md' > /dev/null; then
             uv run python -m src.scripts.logs combine-logs logs | sed "s/{TAG}/$TAG/g" > final.md
           else
             printf 'Automated patched APK build.\n' > final.md
           fi
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+          gh_retry api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
             -F draft=false \
             -F prerelease="$PRERELEASE" \
             -f name="$TAG" \
@@ -321,4 +409,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
-        run: gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" || true
+        shell: bash
+        run: |
+          set +e
+          for attempt in 1 2 3 4 5 6; do
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" && exit 0
+            sleep $((attempt * 3))
+          done
+          exit 0
