@@ -1,5 +1,7 @@
 name: CI
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: '0 10 * * *'
   workflow_dispatch:
@@ -15,7 +17,26 @@ permissions:
   actions: write
 
 jobs:
+  cleanup-public-releases:
+    if: github.event_name == 'push' && vars.ALLOW_PUBLIC_APK_RELEASES != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Remove legacy public APK releases
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName,isDraft \
+            --jq '.[] | select(.isDraft == false) | .tagName' | while read -r tag; do
+              [[ -n "$tag" ]] || continue
+              echo "Deleting legacy public release: $tag"
+              gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+            done
+
   check-versions:
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     outputs:
       build_matrix: ${{ steps.get-matrix.outputs.build_matrix }}
