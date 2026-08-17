@@ -175,14 +175,13 @@ jobs:
           has=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '[.assets[].name | select(endswith(".apk"))] | length > 0')
           echo "has_apks=${has}" >> "$GITHUB_OUTPUT"
 
-      - name: Keep APK builds private by default
-        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES != 'true'
+      - name: Keep APK builds private when explicitly disabled
+        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES == 'false'
         run: |
-          echo "::notice::APK build completed. The GitHub Release remains a private draft because ALLOW_PUBLIC_APK_RELEASES is not set to true."
-          echo "Only enable public release publishing if you have the necessary rights to redistribute every included app."
+          echo "::notice::APK build completed. The GitHub Release remains a private draft because ALLOW_PUBLIC_APK_RELEASES is explicitly set to false."
 
       - name: Download logs from draft release
-        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES == 'true'
+        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES != 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.prepare.outputs.version }}
@@ -192,7 +191,7 @@ jobs:
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[] | select(.name | startswith("build-")) | .apiUrl' | xargs -I{} gh api --method DELETE "{}"
 
       - name: Combine logs and finalize release
-        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES == 'true'
+        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES != 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.prepare.outputs.version }}
@@ -206,7 +205,7 @@ jobs:
           fi
 
       - name: Send Telegram notification
-        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES == 'true' && env.TG_TOKEN != '' && env.TG_CHAT != ''
+        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES != 'false' && env.TG_TOKEN != '' && env.TG_CHAT != ''
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT: ${{ secrets.TG_CHAT }}
