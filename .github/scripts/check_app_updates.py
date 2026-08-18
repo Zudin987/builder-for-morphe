@@ -15,6 +15,7 @@ from src.core.prebuilts import APKSIGNER, fetch_cli, fetch_mpp
 
 
 WATCHED_VERSIONS = {"auto", "latest", "exp"}
+MAX_RELEASE_PAGES = 5
 
 
 def _normalize_version(version: str) -> str:
@@ -31,16 +32,19 @@ def _expected_arches(arch: str) -> tuple[str, ...]:
 
 
 def _published_asset_names(repo: str, net: NetworkManager) -> list[str]:
-    raw = net.get(
-        f"https://api.github.com/repos/{repo}/releases?per_page=100",
-        headers=net._gh_headers,
-    )
-    releases = json.loads(raw)
     names: list[str] = []
-    for release in releases:
-        if release.get("draft"):
-            continue
-        names.extend(asset.get("name", "") for asset in release.get("assets", []))
+    for page in range(1, MAX_RELEASE_PAGES + 1):
+        raw = net.get(
+            f"https://api.github.com/repos/{repo}/releases?per_page=100&page={page}",
+            headers=net._gh_headers,
+        )
+        releases = json.loads(raw)
+        for release in releases:
+            if release.get("draft"):
+                continue
+            names.extend(asset.get("name", "") for asset in release.get("assets", []))
+        if len(releases) < 100:
+            break
     return names
 
 
