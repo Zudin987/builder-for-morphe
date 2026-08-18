@@ -7,12 +7,15 @@ import re
 import sys
 from pathlib import Path
 
-from src.core.builder import _find_pkg_name, _make_scraper, _resolve_version
-from src.core.config import CONFIG_PATH, TEMP_DIR, load_toml, parse_app_entries, parse_config
-from src.core.network import NetworkManager
-from src.core.patcher import PatcherCLI
-from src.core.prebuilts import APKSIGNER, fetch_cli, fetch_mpp
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
+from src.core.builder import _find_pkg_name, _make_scraper, _resolve_version  # noqa: E402, I001
+from src.core.config import CONFIG_PATH, TEMP_DIR, load_toml, parse_app_entries, parse_config  # noqa: E402
+from src.core.network import NetworkManager  # noqa: E402
+from src.core.patcher import PatcherCLI  # noqa: E402
+from src.core.prebuilts import APKSIGNER, fetch_cli, fetch_mpp  # noqa: E402
 
 WATCHED_VERSIONS = {"auto", "latest", "exp"}
 MAX_RELEASE_PAGES = 5
