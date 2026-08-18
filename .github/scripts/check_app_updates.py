@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -85,69 +86,72 @@ def main() -> int:
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
     brands_to_build: set[str] = set()
 
-    with NetworkManager() as net:
-        try:
-            asset_names = _published_asset_names(repo, net)
-        except Exception as exc:
-            print(f"App-version watcher: could not read our releases: {exc}", file=sys.stderr)
-            print("[]")
-            return 0
-
-        cli_cache: dict[tuple[str, str], Path] = {}
-        mpp_cache: dict[tuple[str, str], Path] = {}
-
-        for entry in entries:
+    # Upstream helpers print progress to stdout. Redirect that progress to stderr
+    # so stdout remains exactly one JSON array for the workflow to consume.
+    with contextlib.redirect_stdout(sys.stderr):
+        with NetworkManager() as net:
             try:
-                scrapers = {source: _make_scraper(source, net) for source in entry.dl_urls}
-                pkg_name, dl_from, _ = _find_pkg_name(entry, scrapers)
+                asset_names = _published_asset_names(repo, net)
+            except Exception as exc:
+                print(f"App-version watcher: could not read our releases: {exc}", file=sys.stderr)
+                print("[]", file=sys.stdout)
+                return 0
 
-                cli_key = (entry.cli_source, entry.cli_version)
-                if cli_key not in cli_cache:
-                    cli_cache[cli_key] = fetch_cli(entry.cli_source, entry.cli_version, net)
+            cli_cache: dict[tuple[str, str], Path] = {}
+            mpp_cache: dict[tuple[str, str], Path] = {}
 
-                app_mpp_map: dict[tuple[str, str], Path] = {}
-                for source, spec in entry.patches.items():
-                    key = (source, spec["version"])
-                    if key not in mpp_cache:
-                        mpp_cache[key] = fetch_mpp(source, spec["version"], net)
-                    app_mpp_map[key] = mpp_cache[key]
+            for entry in entries:
+                try:
+                    scrapers = {source: _make_scraper(source, net) for source in entry.dl_urls}
+                    pkg_name, dl_from, _ = _find_pkg_name(entry, scrapers)
 
-                patcher = PatcherCLI(cli_cache[cli_key], app_mpp_map, APKSIGNER)
-                list_patches = patcher.list_patches(
-                    pkg_name,
-                    experimental=entry.version == "exp",
-                )
-                target_version, _ = _resolve_version(
-                    entry,
-                    patcher,
-                    list_patches,
-                    pkg_name,
-                    dl_from,
-                    scrapers,
-                )
-                target = _normalize_version(target_version)
+                    cli_key = (entry.cli_source, entry.cli_version)
+                    if cli_key not in cli_cache:
+                        cli_cache[cli_key] = fetch_cli(entry.cli_source, entry.cli_version, net)
 
-                needs_build = False
-                old_versions: list[str] = []
-                for arch in _expected_arches(entry.arch):
-                    built = _built_version(asset_names, entry.app_name, entry.brand, arch)
-                    old_versions.append(built or "missing")
-                    if built != target:
-                        needs_build = True
+                    app_mpp_map: dict[tuple[str, str], Path] = {}
+                    for source, spec in entry.patches.items():
+                        key = (source, spec["version"])
+                        if key not in mpp_cache:
+                            mpp_cache[key] = fetch_mpp(source, spec["version"], net)
+                        app_mpp_map[key] = mpp_cache[key]
 
-                if needs_build:
-                    brands_to_build.add(entry.brand.lower())
+                    patcher = PatcherCLI(cli_cache[cli_key], app_mpp_map, APKSIGNER)
+                    list_patches = patcher.list_patches(
+                        pkg_name,
+                        experimental=entry.version == "exp",
+                    )
+                    target_version, _ = _resolve_version(
+                        entry,
+                        patcher,
+                        list_patches,
+                        pkg_name,
+                        dl_from,
+                        scrapers,
+                    )
+                    target = _normalize_version(target_version)
+
+                    needs_build = False
+                    old_versions: list[str] = []
+                    for arch in _expected_arches(entry.arch):
+                        built = _built_version(asset_names, entry.app_name, entry.brand, arch)
+                        old_versions.append(built or "missing")
+                        if built != target:
+                            needs_build = True
+
+                    if needs_build:
+                        brands_to_build.add(entry.brand.lower())
+                        print(
+                            f"App-version watcher: {entry.table} target={target} built={','.join(old_versions)} -> rebuild {entry.brand.lower()}",
+                            file=sys.stderr,
+                        )
+                except Exception as exc:
+                    # This watcher is an enhancement only. The upstream patch-release
+                    # checker must keep working even if one app source temporarily fails.
                     print(
-                        f"App-version watcher: {entry.table} target={target} built={','.join(old_versions)} -> rebuild {entry.brand.lower()}",
+                        f"App-version watcher: skipped {entry.table}: {exc}",
                         file=sys.stderr,
                     )
-            except Exception as exc:
-                # This watcher is an enhancement only. The upstream patch-release
-                # checker must keep working even if one app source temporarily fails.
-                print(
-                    f"App-version watcher: skipped {entry.table}: {exc}",
-                    file=sys.stderr,
-                )
 
     print(json.dumps(sorted(brands_to_build)))
     return 0
