@@ -71,24 +71,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          gh_retry() {
-            local attempt=1 max_attempts=8 delay=3
-            while true; do
-              if gh "$@"; then
-                return 0
-              fi
-              local rc=$?
-              if (( attempt >= max_attempts )); then
-                echo "GitHub API still failing after ${attempt} attempts" >&2
-                return "$rc"
-              fi
-              echo "GitHub API temporary failure; retry ${attempt}/${max_attempts} in ${delay}s" >&2
-              sleep "$delay"
-              attempt=$((attempt + 1))
-              if (( delay < 24 )); then delay=$((delay * 2)); fi
-            done
-          }
+          source .github/scripts/gh_retry.sh
 
           VER="$(date +%y.%m.%d)-${{ inputs.patch_source }}"
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
@@ -189,19 +172,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          gh_retry() {
-            local attempt=1 max_attempts=8 delay=3
-            while true; do
-              if gh "$@"; then return 0; fi
-              local rc=$?
-              if (( attempt >= max_attempts )); then return "$rc"; fi
-              echo "GitHub API temporary failure; retry ${attempt}/${max_attempts} in ${delay}s" >&2
-              sleep "$delay"
-              attempt=$((attempt + 1))
-              if (( delay < 24 )); then delay=$((delay * 2)); fi
-            done
-          }
+          source .github/scripts/gh_retry.sh
 
           shopt -s nullglob
           apks=(./build/*.apk)
@@ -243,19 +214,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          gh_retry() {
-            local attempt=1 max_attempts=8 delay=3
-            while true; do
-              if gh "$@"; then return 0; fi
-              local rc=$?
-              if (( attempt >= max_attempts )); then return "$rc"; fi
-              echo "GitHub API temporary failure; retry ${attempt}/${max_attempts} in ${delay}s" >&2
-              sleep "$delay"
-              attempt=$((attempt + 1))
-              if (( delay < 24 )); then delay=$((delay * 2)); fi
-            done
-          }
+          source .github/scripts/gh_retry.sh
 
           [[ -f build.md && -s build.md ]] || exit 0
           file="build-${LABEL}.md"
@@ -309,18 +268,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh_retry() {
-            local attempt=1 max_attempts=8 delay=3
-            while true; do
-              if gh "$@"; then return 0; fi
-              local rc=$?
-              if (( attempt >= max_attempts )); then return "$rc"; fi
-              echo "GitHub API temporary failure; retry ${attempt}/${max_attempts} in ${delay}s" >&2
-              sleep "$delay"
-              attempt=$((attempt + 1))
-              if (( delay < 24 )); then delay=$((delay * 2)); fi
-            done
-          }
+          source .github/scripts/gh_retry.sh
           has=$(gh_retry api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
             --jq '[.assets[].name | select(endswith(".apk"))] | length > 0')
           echo "has_apks=${has}" >> "$GITHUB_OUTPUT"
@@ -338,19 +286,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          gh_retry() {
-            local attempt=1 max_attempts=8 delay=3
-            while true; do
-              if gh "$@"; then return 0; fi
-              local rc=$?
-              if (( attempt >= max_attempts )); then return "$rc"; fi
-              echo "GitHub API temporary failure; retry ${attempt}/${max_attempts} in ${delay}s" >&2
-              sleep "$delay"
-              attempt=$((attempt + 1))
-              if (( delay < 24 )); then delay=$((delay * 2)); fi
-            done
-          }
+          source .github/scripts/gh_retry.sh
 
           mkdir -p logs
           ASSETS_JSON="$(gh_retry api --paginate "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?per_page=100")"
@@ -371,19 +307,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          gh_retry() {
-            local attempt=1 max_attempts=8 delay=3
-            while true; do
-              if gh "$@"; then return 0; fi
-              local rc=$?
-              if (( attempt >= max_attempts )); then return "$rc"; fi
-              echo "GitHub API temporary failure; retry ${attempt}/${max_attempts} in ${delay}s" >&2
-              sleep "$delay"
-              attempt=$((attempt + 1))
-              if (( delay < 24 )); then delay=$((delay * 2)); fi
-            done
-          }
+          source .github/scripts/gh_retry.sh
 
           if compgen -G 'logs/*.md' > /dev/null; then
             uv run python -m src.scripts.logs combine-logs logs | sed "s/{TAG}/$TAG/g" > final.md
