@@ -20,6 +20,16 @@ on:
           - metra
           - bufferk
           - xtra
+      build_patch_apps:
+        description: 'Build apps selected by the patch-source update logic'
+        required: true
+        type: boolean
+        default: true
+      target_apps:
+        description: 'Optional JSON list of exact app IDs to build in addition'
+        required: true
+        type: string
+        default: '[]'
       tolerate_stock_unavailable:
         description: 'Skip apps temporarily when no compatible stock APK can be downloaded'
         required: true
@@ -33,6 +43,12 @@ on:
       filter_changelog:
         default: false
         type: boolean
+      build_patch_apps:
+        default: true
+        type: boolean
+      target_apps:
+        default: '[]'
+        type: string
       tolerate_stock_unavailable:
         default: false
         type: boolean
@@ -109,17 +125,45 @@ jobs:
         id: set-matrix
         env:
           FILTER_CHANGELOG: ${{ inputs.filter_changelog }}
+          BUILD_PATCH_APPS: ${{ inputs.build_patch_apps }}
+          TARGET_APPS: ${{ inputs.target_apps }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          RESULT="$(uv run python -m src.scripts.matrix get-matrix '${{ inputs.patch_source }}')"
+
+          if [[ "$BUILD_PATCH_APPS" == "true" ]]; then
+            RESULT="$(uv run python -m src.scripts.matrix get-matrix '${{ inputs.patch_source }}')"
+          else
+            RESULT='{"include":[],"prerelease":false}'
+          fi
+
+          TARGETS="$(jq -c 'if type == "array" then unique else [] end' <<<"${TARGET_APPS:-[]}")"
+          if [[ "$(jq 'length' <<<"$TARGETS")" -gt 0 ]]; then
+            # Resolve the normal full matrix with changelog filtering disabled,
+            # then keep only exact app IDs reported by the compatible-version watcher.
+            ALL_RESULT="$(FILTER_CHANGELOG=false uv run python -m src.scripts.matrix get-matrix '${{ inputs.patch_source }}')"
+            TARGET_RESULT="$(jq -c --argjson targets "$TARGETS" '
+              {
+                include: [.include[] | select(.id as $id | ($targets | index($id)) != null)],
+                prerelease: (.prerelease // false)
+              }
+            ' <<<"$ALL_RESULT")"
+
+            RESULT="$(jq -cn --argjson base "$RESULT" --argjson target "$TARGET_RESULT" '
+              {
+                include: (($base.include + $target.include) | unique_by([.id, (.arch // "")])),
+                prerelease: (($base.prerelease // false) or ($target.prerelease // false))
+              }
+            ')"
+          fi
 
           # Proton VPN's current Rushi patch is known to fail. Keep it out of CI
           # until its patch source is fixed, while allowing other Rushi apps such
           # as Waze to continue building normally.
           RESULT="$(jq 'if (.include | type) == "array" then .include |= map(select(.id != "Proton-VPN_rushi")) else . end' <<<"$RESULT")"
 
+          echo "Selected app matrix: $(jq -c '.include' <<<"$RESULT")"
           echo "matrix=$(jq -c '{include}' <<<"$RESULT")" >> "$GITHUB_OUTPUT"
           echo "prerelease=$(jq -r '.prerelease // false' <<<"$RESULT")" >> "$GITHUB_OUTPUT"
 
