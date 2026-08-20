@@ -65,7 +65,7 @@ def _built_version(asset_names: list[str], app_name: str, brand: str, arch: str)
 def main() -> int:
     repo = os.getenv("GITHUB_REPOSITORY", "").strip()
     if not repo:
-        print("[]")
+        print("{}")
         return 0
 
     excluded = {
@@ -87,15 +87,15 @@ def main() -> int:
     ]
 
     if not entries:
-        print("[]")
+        print("{}")
         return 0
 
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
-    brands_to_build: set[str] = set()
+    apps_to_build: dict[str, set[str]] = {}
     release_lookup_failed = False
 
     # Upstream helpers print progress to stdout. Redirect that progress to stderr
-    # so stdout remains exactly one JSON array for the workflow to consume.
+    # so stdout remains exactly one JSON object for the workflow to consume.
     with contextlib.redirect_stdout(sys.stderr):
         with NetworkManager() as net:
             try:
@@ -149,9 +149,10 @@ def main() -> int:
                                 needs_build = True
 
                         if needs_build:
-                            brands_to_build.add(entry.brand.lower())
+                            brand = entry.brand.lower()
+                            apps_to_build.setdefault(brand, set()).add(entry.table)
                             print(
-                                f"App-version watcher: {entry.table} target={target} built={','.join(old_versions)} -> rebuild {entry.brand.lower()}",
+                                f"App-version watcher: {entry.table} target={target} built={','.join(old_versions)} -> rebuild only {entry.table} in {brand}",
                                 file=sys.stderr,
                             )
                     except Exception as exc:
@@ -162,7 +163,10 @@ def main() -> int:
                             file=sys.stderr,
                         )
 
-    print("[]" if release_lookup_failed else json.dumps(sorted(brands_to_build)))
+    if release_lookup_failed:
+        print("{}")
+    else:
+        print(json.dumps({brand: sorted(apps) for brand, apps in sorted(apps_to_build.items())}))
     return 0
 
 
