@@ -20,12 +20,20 @@ on:
           - metra
           - bufferk
           - xtra
+      tolerate_stock_unavailable:
+        description: 'Skip apps temporarily when no compatible stock APK can be downloaded'
+        required: true
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       patch_source:
         default: 'morphe'
         type: string
       filter_changelog:
+        default: false
+        type: boolean
+      tolerate_stock_unavailable:
         default: false
         type: boolean
 
@@ -118,10 +126,6 @@ jobs:
   run:
     needs: prepare
     runs-on: ubuntu-latest
-    # Acrobat's patch-supported version can temporarily appear before the stock
-    # APK mirrors have it. Do not fail the whole CI; the app watcher will retry
-    # it automatically on later runs until a compatible stock APK is available.
-    continue-on-error: ${{ matrix.id == 'Adobe-Acrobat-Reader' }}
     permissions:
       contents: write
     strategy:
@@ -166,7 +170,9 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
           KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
-        run: uv run main.py ${{ matrix.id }} ${{ matrix.arch }}
+          TOLERATE_STOCK_UNAVAILABLE: ${{ inputs.tolerate_stock_unavailable }}
+        shell: bash
+        run: bash .github/scripts/run_build_resilient.sh ${{ matrix.id }} ${{ matrix.arch }}
 
       - name: Upload APKs to exact draft release
         if: always()
