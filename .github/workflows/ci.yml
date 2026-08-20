@@ -70,21 +70,29 @@ jobs:
 
           if [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.force_build }}" = "true" ]; then
             BRANDS="$(uv run python -m src.scripts.matrix get-matrix-force)"
-            MATRIX="$(jq -cn --argjson brands "$BRANDS" '$brands | map({patch_source: ., filter_changelog: false})')"
+            MATRIX="$(jq -cn --argjson brands "$BRANDS" '
+              $brands | map({
+                patch_source: ., 
+                build_patch_apps: true,
+                filter_changelog: false,
+                target_apps: []
+              })
+            ')"
           else
-            # Keep upstream's patch-release detector untouched, then add a fork-only
-            # watcher that resolves the version the current patches would actually
-            # choose. A brand is rebuilt if either side says it needs attention.
+            # Patch releases stay brand-level because one patch release may affect
+            # several apps. Compatible app-version changes are tracked by exact app
+            # ID, so an update to Reddit does not rebuild YouTube/YT Music as well.
             PATCH_BRANDS="$(uv run python -m src.scripts.matrix get-matrix)"
-            APP_BRANDS="$(uv run python .github/scripts/check_app_updates.py)"
+            APP_UPDATES="$(uv run python .github/scripts/check_app_updates.py)"
             MATRIX="$(jq -cn \
               --argjson patches "$PATCH_BRANDS" \
-              --argjson apps "$APP_BRANDS" \
-              '($patches + $apps | unique) as $all
-               | $all
+              --argjson apps "$APP_UPDATES" \
+              '($patches + ($apps | keys) | unique)
                | map(. as $brand | {
                    patch_source: $brand,
-                   filter_changelog: (($apps | index($brand)) == null)
+                   build_patch_apps: (($patches | index($brand)) != null),
+                   filter_changelog: (($patches | index($brand)) != null),
+                   target_apps: ($apps[$brand] // [])
                  })')"
           fi
 
@@ -112,7 +120,9 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       patch_source: ${{ matrix.patch_source }}
+      build_patch_apps: ${{ matrix.build_patch_apps }}
       filter_changelog: ${{ matrix.filter_changelog }}
+      target_apps: ${{ toJSON(matrix.target_apps) }}
       # This is the unattended/normal pipeline: a temporarily missing stock APK
       # should skip that app and be retried later, not turn the whole CI red.
       tolerate_stock_unavailable: true
