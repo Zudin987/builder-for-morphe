@@ -113,4 +113,7 @@ jobs:
     with:
       patch_source: ${{ matrix.patch_source }}
       filter_changelog: ${{ matrix.filter_changelog }}
+      # This is the unattended/normal pipeline: a temporarily missing stock APK
+      # should skip that app and be retried later, not turn the whole CI red.
+      tolerate_stock_unavailable: true
     secrets: inherit
