@@ -118,6 +118,10 @@ jobs:
   run:
     needs: prepare
     runs-on: ubuntu-latest
+    # Acrobat's patch-supported version can temporarily appear before the stock
+    # APK mirrors have it. Do not fail the whole CI; the app watcher will retry
+    # it automatically on later runs until a compatible stock APK is available.
+    continue-on-error: ${{ matrix.id == 'Adobe-Acrobat-Reader' }}
     permissions:
       contents: write
     strategy:
