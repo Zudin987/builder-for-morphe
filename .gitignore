@@ -1,8 +1,34 @@
+# Python / local tooling
 .env
-__pycache__
+.env.*
+!.env.example
+__pycache__/
 *.py[cod]
 .venv/
+.pytest_cache/
+.ruff_cache/
+
+# Generated build/output
 /temp
 /build
 /logs
 build.md
+*.apk
+*.aab
+*.apks
+*.xapk
+
+# Signing material / credentials
+*.jks
+*.keystore
+*.pem
+*.key
+*.p12
+*.pfx
+key.properties
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
