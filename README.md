@@ -1,89 +1,67 @@
-# Builder for Morphe
+## [nvbangg/builder-for-morphe](https://github.com/nvbangg/builder-for-morphe)
 
-A GitHub Actions builder for creating patched Android APKs from supported Morphe/patch-source projects.
+<div align="center">
 
-Fork lineage: **nvbangg/builder-for-morphe**, based on **krvstek/uni-apks**.
+[![Typing SVG](https://readme-typing-svg.demolab.com/?font=Google+Sans&size=25&duration=3000&pause=2000&color=&center=true&vCenter=true&random=false&width=550&lines=%F0%9F%93%A6+Build+APKs+from+Morphe+patch+sources)](#-build-your-own-apks)<br>
+You can use [this repository](https://github.com/nvbangg/builder-for-morphe) to automatically build patched APKs from [Morphe](https://morphe.software) patch sources on every new update.
 
-> **TL;DR:** Choose apps in `config.toml`, run the build workflow, and review the generated **draft** GitHub Release. This fork does **not** publish patched third-party APKs publicly unless the repository variable `ALLOW_PUBLIC_APK_RELEASES` is explicitly set to `true`.
+</div>
 
-## What this repository does
+> [!IMPORTANT]
+> **Safety change in this fork:** generated APK releases stay as private GitHub draft releases by default. The workflow will not make APKs public unless the repository variable `ALLOW_PUBLIC_APK_RELEASES` is deliberately set to `true`. Only publish third-party app binaries when you have the necessary redistribution rights.
 
-- Builds selected Android apps with supported patch sources.
-- Provides many preconfigured entries in `config.toml`.
-- Can react to compatible app/patch updates.
-- Stores generated APKs in a GitHub draft Release during normal use.
-- Keeps signing credentials in GitHub Secrets rather than source files.
-- Supports intentional public Releases only when you explicitly opt in.
+<details>
+<summary id="features"><b>🔥 Features</b></summary>
 
-## Quick Start — 1, 2, 3
+- 🚀 **Easy to use:** easily [build your own APKs](#-build-your-own-apks) just by customizing [`config.toml`](config.toml) (no extra setup required).
+- 🧩 **Many pre-configured apps:** just set `enabled = true` for the apps you want.
+- 🏗️ **Template support:** use this repository as a [template](https://github.com/new?template_name=builder-for-morphe&template_owner=nvbangg) for private builds or personal development.
+- 🔁 **[Automatic upstream sync](CONTRIBUTING.md#-sync-upstream):** pull in bug fixes and new features while still preserving your own configuration.
+- 🔄 **Auto-updates:** supported when you intentionally enable public releases; public release publishing is disabled by default in this fork.
+- ✨ **And much more!**
+</details>
 
-1. Open [`config.toml`](config.toml) and set `enabled = true` only for the apps you want to build.
-2. Run the repository's build/CI workflow from **Actions**.
-3. Review the generated **draft Release** and download the APKs for your own use/testing.
+## 🤖 Build Your Own APKs
 
-No public APK publication is required for normal use.
+1. 🍴 `Fork` [this repo](https://github.com/nvbangg/builder-for-morphe) (don't forget to ⭐ `Star` and 👀 `Watch` it)
+    - ⚙️ **[Optional]** Customize the apps you want in [`config.toml`](config.toml)
+2. 🚀 Run the [CI workflow](../../actions/workflows/ci.yml) (make sure workflows are enabled first)
+3. 🔒 Generated APKs are kept in a **draft Release** by default so they are not publicly distributed.
+4. If you have redistribution rights for every included app and intentionally want public Releases, create the repository variable `ALLOW_PUBLIC_APK_RELEASES=true`.
 
-## Public release safety
+## 📚 Documentation & Contributing
 
-Public distribution is deliberately **opt-in** in this fork.
+For full configuration reference, setup and contributing guide, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-- Missing `ALLOW_PUBLIC_APK_RELEASES` → release remains draft.
-- `ALLOW_PUBLIC_APK_RELEASES=false` → release remains draft.
-- Only `ALLOW_PUBLIC_APK_RELEASES=true` → the release workflow may publish the generated APK release.
+For all Morphe resources, patches and community projects, visit [nvbangg/awesome-morphe](https://github.com/nvbangg/awesome-morphe).
 
-If you intentionally want public Releases and have the necessary redistribution rights for every included application, create the repository variable:
+---
 
-```text
-ALLOW_PUBLIC_APK_RELEASES=true
-```
+<div align="center">
 
-Do not enable that variable merely to make downloading easier. Patched APKs can contain copyrighted third-party application code and assets; public redistribution may require permission from the relevant rights holders.
+**[github.com/nvbangg/builder-for-morphe](https://github.com/nvbangg/builder-for-morphe)**  
+⭐ Star this repo if you find it useful!  
+Maintained with ❤️ by **[@nvbangg](https://github.com/nvbangg)** (syncing upstream from [krvstek/uni-apks](https://github.com/krvstek/uni-apks) with the changes mentioned in the [Features](#features) section)
 
-## Configuration
+</div>
 
-Most users only need [`config.toml`](config.toml).
+<details>
+<summary><h3>⚖️ License & Copyright</h3></summary>
 
-Each app section controls things such as:
+This project is open-source and distributed under the **[GNU GPLv3](LICENSE)** license. You are free to use, modify, and redistribute this software, but you **must** keep all original and new copyright notices intact.
 
-- whether the app is enabled,
-- stock APK source pages,
-- patch source,
-- architecture/version options,
-- optional branding/patch arguments.
+> **Copyright (C) 2026 [nvbangg](https://github.com/nvbangg)** (for all [modifications](https://github.com/nvbangg/builder-for-morphe/commits/main/?author=nvbangg) by nvbangg in [builder-for-morphe](https://github.com/nvbangg/builder-for-morphe), and those in [contributions](https://github.com/krvstek/uni-apks/commits/main/?author=nvbangg) and [co-authored commits](https://github.com/search?q=repo%3Akrvstek%2Funi-apks+Co-authored-by%3A+nvbangg&type=commits))  
+> **Copyright (C) 2026 [krvstek](https://github.com/krvstek)** (for the original [uni-apks](https://github.com/krvstek/uni-apks) codebase)  
+> **Authors:** See the list of [Contributors](https://github.com/nvbangg/builder-for-morphe/graphs/contributors) for their source code contributions, and see [icons/README.md](icons/README.md) for asset sources.
 
-Keep disabled entries disabled unless you actually need them. Smaller build matrices are easier to maintain and produce fewer unnecessary third-party binaries.
+</details>
 
-For the full configuration and contributing reference, see [CONTRIBUTING.md](CONTRIBUTING.md).
+<details>
+<summary><h3>⚠️ Disclaimer</h3></summary>
 
-## Secrets and signing
-
-Never commit:
-
-- Android keystores,
-- signing passwords,
-- `.env` files,
-- GitHub/Telegram tokens,
-- generated APK/AAB files.
-
-Use GitHub repository **Secrets** for signing credentials. Generated APKs belong in draft Releases/build output rather than the source tree.
-
-## Copyright / redistribution note
-
-This repository contains build automation and configuration. The stock Android apps downloaded during a workflow and the patched APKs produced from them remain subject to their respective owners' copyright, trademark, licence, and distribution terms.
-
-A successful build does **not** automatically grant the right to redistribute the resulting APK publicly.
-
-## Upstream / project credits
-
-- Upstream project: **nvbangg/builder-for-morphe**
-- Original base: **krvstek/uni-apks**
-- Morphe resources/patch sources remain separate third-party projects.
-- Asset-source notes are documented under `icons/` where provided.
-
-This fork is not affiliated with Morphe or the third-party application publishers represented in `config.toml`.
-
-## License
-
-The builder source is distributed under **GNU GPLv3** — see [LICENSE](LICENSE).
-
-Keep the original copyright and attribution notices when redistributing the builder source or modifications.
+- [This project](https://github.com/nvbangg/builder-for-morphe) is not affiliated with [Morphe](https://morphe.software/) or any authors mentioned here.
+- This project is intended for educational, research and personal build workflows.
+- All builds are done using publicly available tools. This repository simply automates the process for convenience.
+- The workflow can produce patched third-party APKs. Public publication is disabled by default in this fork; do not publish third-party binaries unless you have the necessary rights.
+- Everything happens through GitHub Actions for transparency.
+</details>
