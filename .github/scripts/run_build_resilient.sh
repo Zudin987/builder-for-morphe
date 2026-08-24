@@ -18,8 +18,12 @@ fi
 
 is_stock_source_failure() {
   local log="$1"
-  grep -Eq \
-    "Stock APK not found|No matching variant found for arch|Failed to fetch '.*' from '.*' \(version=.*arch=.*\)|src/scrapers/(github|apkmirror|uptodown)\.py" \
+
+  # Only soften failures that look like source/network availability problems.
+  # Do not classify a traceback merely because it mentions a scraper module;
+  # parser/code regressions should stay red so they are not hidden for days.
+  grep -Eiq \
+    "No matching variant found for arch|HTTP (403|404|408|409|425|429|5[0-9]{2})|Request failed after [0-9]+ attempts|timed out|timeout|temporary failure|could not resolve host|name or service not known|connection (reset|refused|aborted)|remote end closed connection|remote disconnected|service unavailable|too many requests|rate limit" \
     "$log"
 }
 
