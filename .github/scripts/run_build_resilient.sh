@@ -23,7 +23,7 @@ is_stock_source_failure() {
   # Do not classify a traceback merely because it mentions a scraper module;
   # parser/code regressions should stay red so they are not hidden for days.
   grep -Eiq \
-    "No matching variant found for arch|HTTP (403|404|408|409|425|429|5[0-9]{2})|Request failed after [0-9]+ attempts|timed out|timeout|temporary failure|could not resolve host|name or service not known|connection (reset|refused|aborted)|remote end closed connection|remote disconnected|service unavailable|too many requests|rate limit" \
+    "No matching variant found for arch|HTTP (403|404|408|409|425|429|5[0-9]{2})|Request failed after [0-9]+ attempts|Download failed after [0-9]+ attempts|JS challenge detected|Challenge solver error|timed out|timeout|temporary failure|could not resolve host|name or service not known|connection (reset|refused|aborted)|remote end closed connection|remote disconnected|service unavailable|too many requests|rate limit" \
     "$log"
 }
 
