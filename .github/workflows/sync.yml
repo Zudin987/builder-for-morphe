@@ -53,10 +53,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Keep user configuration and fork-only automation local. Core/source
-          # files can continue following upstream, but our CI reliability layer
-          # must not be overwritten by an automatic merge.
-          IGNORE_LIST="${IGNORE_SYNC_FILES:-config.toml sig.txt .github/workflows .github/scripts}"
+          # These paths are mandatory fork-owned state. IGNORE_SYNC_FILES may
+          # add more paths, but cannot accidentally remove these protections.
+          IGNORE_LIST="config.toml sig.txt README.md .github/workflows .github/scripts ${IGNORE_SYNC_FILES:-}"
           MERGE_FAILED=false
           git merge --no-commit --no-ff upstream/main || MERGE_FAILED=true
 
