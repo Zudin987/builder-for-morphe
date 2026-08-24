@@ -574,7 +574,7 @@ changelog-keywords = ["Photo Editor"]
 "github:rushiranpise/morphe-patches" = []
 
 [Proton-VPN_rushi]
-enabled = true
+enabled = false
 brand = "rushi"
 app-name = "Proton VPN"
 
@@ -806,7 +806,7 @@ enabled = true
 brand = "de-vanced"
 github-dlurl = "https://github.com/nvbangg/builder-for-morphe/releases/tag/com.facebook.katana"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/facebook-2/facebook/"
-uptodown-durl = "https://facebook.en.uptodown.com/android"
+uptodown-dlurl = "https://facebook.en.uptodown.com/android"
 arch = "both"
 
 [Facebook.patches]
