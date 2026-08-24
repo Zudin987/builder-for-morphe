@@ -8,7 +8,7 @@ You can use [this repository](https://github.com/nvbangg/builder-for-morphe) to 
 </div>
 
 > [!IMPORTANT]
-> **Safety change in this fork:** generated APK releases stay as private GitHub draft releases by default. The workflow will not make APKs public unless the repository variable `ALLOW_PUBLIC_APK_RELEASES` is deliberately set to `true`. Only publish third-party app binaries when you have the necessary redistribution rights.
+> **Behavior in this fork:** successful APK builds are published automatically so update clients such as Obtainium can detect them. Set the repository variable `ALLOW_PUBLIC_APK_RELEASES=false` if you intentionally want generated releases to remain drafts instead. This repository is public, so published APK releases are publicly accessible. Only publish third-party app binaries when you have the necessary redistribution rights.
 
 <details>
 <summary id="features"><b>🔥 Features</b></summary>
@@ -16,8 +16,8 @@ You can use [this repository](https://github.com/nvbangg/builder-for-morphe) to 
 - 🚀 **Easy to use:** easily [build your own APKs](#-build-your-own-apks) just by customizing [`config.toml`](config.toml) (no extra setup required).
 - 🧩 **Many pre-configured apps:** just set `enabled = true` for the apps you want.
 - 🏗️ **Template support:** use this repository as a [template](https://github.com/new?template_name=builder-for-morphe&template_owner=nvbangg) for private builds or personal development.
-- 🔁 **[Automatic upstream sync](CONTRIBUTING.md#-sync-upstream):** pull in bug fixes and new features while still preserving your own configuration.
-- 🔄 **Auto-updates:** supported when you intentionally enable public releases; public release publishing is disabled by default in this fork.
+- 🔁 **[Automatic upstream sync](CONTRIBUTING.md#-sync-upstream):** pull in upstream core fixes while this fork preserves its local configuration and `.github` automation layer.
+- 🔄 **Auto-updates:** successful builds publish automatically for Obtainium; set `ALLOW_PUBLIC_APK_RELEASES=false` to keep releases as drafts.
 - ✨ **And much more!**
 </details>
 
@@ -26,8 +26,8 @@ You can use [this repository](https://github.com/nvbangg/builder-for-morphe) to 
 1. 🍴 `Fork` [this repo](https://github.com/nvbangg/builder-for-morphe) (don't forget to ⭐ `Star` and 👀 `Watch` it)
     - ⚙️ **[Optional]** Customize the apps you want in [`config.toml`](config.toml)
 2. 🚀 Run the [CI workflow](../../actions/workflows/ci.yml) (make sure workflows are enabled first)
-3. 🔒 Generated APKs are kept in a **draft Release** by default so they are not publicly distributed.
-4. If you have redistribution rights for every included app and intentionally want public Releases, create the repository variable `ALLOW_PUBLIC_APK_RELEASES=true`.
+3. 📦 Successful APK builds are published as GitHub Releases so Obtainium and similar clients can detect them.
+4. 🔒 If you intentionally want draft-only builds, create the repository variable `ALLOW_PUBLIC_APK_RELEASES=false`.
 
 ## 📚 Documentation & Contributing
 
@@ -62,6 +62,6 @@ This project is open-source and distributed under the **[GNU GPLv3](LICENSE)** l
 - [This project](https://github.com/nvbangg/builder-for-morphe) is not affiliated with [Morphe](https://morphe.software/) or any authors mentioned here.
 - This project is intended for educational, research and personal build workflows.
 - All builds are done using publicly available tools. This repository simply automates the process for convenience.
-- The workflow can produce patched third-party APKs. Public publication is disabled by default in this fork; do not publish third-party binaries unless you have the necessary rights.
+- The workflow can produce patched third-party APKs. In this fork, successful builds are published by default for the Obtainium update flow unless `ALLOW_PUBLIC_APK_RELEASES=false`; do not publicly redistribute third-party binaries unless you have the necessary rights.
 - Everything happens through GitHub Actions for transparency.
 </details>
