@@ -6,6 +6,13 @@ on:
       - 'config.toml'
       - '.github/workflows/**'
       - '.github/scripts/**'
+      - 'src/**'
+      - 'main.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.python-version'
+      - 'sig.txt'
+      - 'bin/**'
   schedule:
     - cron: '0 10 * * *'
   workflow_dispatch:
