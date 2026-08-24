@@ -89,6 +89,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Prepare clean draft release
+        if: github.event_name != 'push'
         id: version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -219,7 +220,7 @@ jobs:
         run: bash .github/scripts/run_build_resilient.sh ${{ matrix.id }} ${{ matrix.arch }}
 
       - name: Upload APKs to exact draft release
-        if: always()
+        if: always() && github.event_name != 'push'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
@@ -260,7 +261,7 @@ jobs:
           done
 
       - name: Upload build log to exact draft release
-        if: always()
+        if: always() && github.event_name != 'push'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
@@ -289,7 +290,7 @@ jobs:
 
   release:
     needs: [prepare, run]
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && github.event_name != 'push' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
