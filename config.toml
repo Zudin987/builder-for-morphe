@@ -60,7 +60,7 @@ patcher-args = "-e 'Custom branding name for Reddit' -OappName='Reddit Morphe'"
 "github:MorpheApp/morphe-patches" = { version = "dev" }
 
 [X-Twitter]
-enabled = false
+enabled = true
 brand = "piko"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/x-corp/twitter"
 uptodown-dlurl = "https://twitter.en.uptodown.com/android"
