@@ -46,7 +46,7 @@ jobs:
           PY
 
       - name: Validate workflow YAML syntax
-        run: ruby -e 'require "yaml"; Dir[".github/workflows/*.{yml,yaml}"].sort.each { |f| YAML.parse_file(f); puts "validated #{f}" }'
+        run: ruby -e 'require "yaml"; Dir[".github/workflows/*.{yml,yaml}"].sort.each { |f| YAML.parse_file(f); puts "validated " + f }'
 
       - name: Run regression tests
         env:
