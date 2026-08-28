@@ -1,6 +1,5 @@
 # ---------------------------------------------------------
-# Copyright (C) 2026 krvstek (Original Author)
-# Copyright (C) 2026 The uni-apks Contributors (Modifications)
+# Copyright (C) 2026 krvstek
 # 
 # DO NOT REMOVE OR ALTER THIS COPYRIGHT HEADER.
 # This file is part of uni-apks.
@@ -45,14 +44,22 @@ def _fetch_latest_release(source: str, net: NetworkManager, version: str = "late
     return changelog_text, upstream_date
 
 def _fetch_our_releases(repo: str, net: NetworkManager) -> dict[str, str]:
+    """Return last successful build timestamp per brand, including draft releases.
+
+    Private-by-default repositories keep successful APKs in draft releases. Using only
+    ``published_at`` made those builds invisible and caused unnecessary rebuild loops.
+    """
     our_releases_by_brand: dict[str, str] = {}
     try:
         our_releases_raw = net.get(f"https://api.github.com/repos/{repo}/releases?per_page=100", headers=net._gh_headers)
         for rel in json.loads(our_releases_raw):
+            if not any(asset.get("name", "").endswith(".apk") for asset in rel.get("assets", [])):
+                continue
             tag = rel.get("tag_name", "")
             brand = tag.split("-", 1)[1] if "-" in tag else ""
-            if brand and brand not in our_releases_by_brand:
-                our_releases_by_brand[brand] = rel.get("published_at", "") or ""
+            built_at = rel.get("published_at") or rel.get("updated_at") or rel.get("created_at") or ""
+            if brand and built_at and brand not in our_releases_by_brand:
+                our_releases_by_brand[brand] = built_at
     except Exception as exc:
         epr(f"Failed to fetch our releases: {exc}")
         our_releases_by_brand = {}
