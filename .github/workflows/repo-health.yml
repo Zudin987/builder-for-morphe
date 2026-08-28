@@ -29,6 +29,27 @@ jobs:
       - name: Compile Python sources
         run: uv run python -m compileall -q main.py src .github/scripts tests
 
+      - name: Validate current configuration
+        env:
+          GITHUB_ACTIONS: "true"
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          from src.core.config import CONFIG_PATH, load_toml, parse_app_entries, parse_config
+
+          data = load_toml(CONFIG_PATH)
+          config = parse_config(data)
+          entries = parse_app_entries(data, config)
+          assert config.strict_sigcheck is True
+          assert entries
+          assert any(entry.enabled for entry in entries)
+          print(f"Validated {len(entries)} configured app entries")
+          PY
+
+      - name: Validate workflow YAML syntax
+        run: ruby -e 'require "yaml"; Dir[".github/workflows/*.{yml,yaml}"].sort.each { |f| YAML.parse_file(f); puts "validated #{f}" }'
+
       - name: Run regression tests
         env:
           GITHUB_ACTIONS: "true"
