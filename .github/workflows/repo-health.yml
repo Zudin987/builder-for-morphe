@@ -63,11 +63,17 @@ jobs:
           grep -Fq "vars.ALLOW_PUBLIC_APK_RELEASES == 'true'" .github/workflows/build.yml
           grep -Fq "vars.ALLOW_PUBLIC_APK_RELEASES != 'true'" .github/workflows/build.yml
 
-          if grep -R -nF 'https://astral.sh/uv/' .github/workflows; then
-            echo "::error::Workflows must use the commit-pinned setup-uv action, not curl a remote installer into sh."
-            exit 1
-          fi
-          grep -R -Fq 'astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d' .github/workflows
+          forbidden_uv_installer='https://astral.sh/uv/'
+          for wf in .github/workflows/build.yml .github/workflows/ci.yml .github/workflows/sync.yml; do
+            if grep -nF "$forbidden_uv_installer" "$wf"; then
+              echo "::error::Workflow $wf must use the commit-pinned setup-uv action, not curl a remote installer into sh."
+              exit 1
+            fi
+          done
+          pinned_uv_action='astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d'
+          for wf in .github/workflows/build.yml .github/workflows/ci.yml .github/workflows/repo-health.yml; do
+            grep -Fq "$pinned_uv_action" "$wf"
+          done
 
           expected_apksigner_blob='594b263aa1c621bae45e5fd9740ca4dcccbf1c33'
           actual_apksigner_blob="$(git rev-parse HEAD:bin/apksigner.jar)"
