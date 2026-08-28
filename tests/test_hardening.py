@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.core.config import AppEntry, parse_app_entries, parse_config
-from src.core.prebuilts import PrebuiltsError, _verify_digest, get_highest_ver
+from src.core.prebuilts import PrebuiltsError, _get_target_asset, _verify_digest, get_highest_ver
 from src.scrapers.apkmirror import APKMirrorError, APKMirrorScraper
 from src.scripts.matrix import _fetch_our_releases
 
@@ -104,6 +104,11 @@ class HardeningTests(unittest.TestCase):
             with self.assertRaises(PrebuiltsError):
                 _verify_digest(path, "sha256:" + "0" * 64, "github:example/repo", "v1")
             self.assertFalse(path.exists())
+
+    def test_ambiguous_patch_assets_are_rejected(self):
+        assets = [{"name": "patches-one.mpp"}, {"name": "patches-two.mpp"}]
+        with self.assertRaisesRegex(PrebuiltsError, "Ambiguous assets"):
+            _get_target_asset(assets, "mpp", "github:example/patches", "v1")
 
     def test_ci_forces_strict_signature_checking(self):
         with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=False):
