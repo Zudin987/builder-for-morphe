@@ -28,8 +28,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
           UPSTREAM_URL: ${{ vars.UPSTREAM_URL }}
+        shell: bash
         run: |
-          if [ -z "$UPSTREAM_URL" ]; then
+          set -euo pipefail
+          if [[ -z "$UPSTREAM_URL" ]]; then
             UPSTREAM_URL=$(gh api repos/${{ github.repository }} -q '.parent.html_url // "https://github.com/nvbangg/builder-for-morphe"')
           fi
           git remote add upstream "$UPSTREAM_URL"
@@ -37,89 +39,62 @@ jobs:
           git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
           git fetch --no-tags origin refs/heads/sync-upstream:refs/remotes/origin/sync-upstream || true
 
-          if [ "$(git rev-list --count origin/main..upstream/main)" -eq 0 ]; then
+          if [[ "$(git rev-list --count origin/main..upstream/main)" -eq 0 ]]; then
             echo "::notice title=Sync upstream::There were no new commits."
             exit 0
           fi
-
           echo "HAS_CHANGES=true" >> "$GITHUB_OUTPUT"
 
-      - name: Sync upstream
+      - name: Prepare reviewable upstream sync
         if: steps.check.outputs.HAS_CHANGES == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
           IGNORE_SYNC_FILES: ${{ vars.IGNORE_SYNC_FILES }}
+        shell: bash
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # These paths are mandatory fork-owned state. IGNORE_SYNC_FILES may
-          # add more paths, but cannot accidentally remove these protections.
-          IGNORE_LIST="config.toml sig.txt README.md .github/workflows .github/scripts ${IGNORE_SYNC_FILES:-}"
+          # Fork-owned policy and release automation are never replaced automatically.
+          # Upstream executable/source changes are proposed through a PR so Repository
+          # health checks run before they can reach main.
+          IGNORE_LIST="config.toml sig.txt README.md .github/workflows .github/scripts tests ${IGNORE_SYNC_FILES:-}"
+
+          git checkout -B sync-upstream origin/main
           MERGE_FAILED=false
-          git merge --no-commit --no-ff upstream/main || MERGE_FAILED=true
-
-          if [ "$MERGE_FAILED" = true ]; then
-            CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
-            UNRESOLVED=false
-            if [ -n "$CONFLICT_FILES" ]; then
-              for file in $CONFLICT_FILES; do
-                IGNORED=false
-                for pattern in $IGNORE_LIST; do
-                  if [[ "$file" == "$pattern" ]] || [[ "$file" == "$pattern"/* ]]; then
-                    IGNORED=true
-                    break
-                  fi
-                done
-                if [ "$IGNORED" = false ]; then
-                  UNRESOLVED=true
-                  break
-                fi
-              done
-            fi
-
-            if [ "$UNRESOLVED" = true ]; then
-              echo "::notice title=Sync Upstream::Unresolved conflicts detected"
-              git merge --abort || true
-
-              if git show-ref --verify --quiet refs/remotes/origin/sync-upstream; then
-                if git merge-base --is-ancestor upstream/main origin/sync-upstream; then
-                  echo "::notice title=Sync Upstream::PR branch already contains the latest upstream commits"
-                  exit 0
-                fi
-              fi
-
-              git checkout -B sync-upstream
-              git merge --no-commit -X theirs upstream/main || true
-              for pattern in $IGNORE_LIST; do
-                git checkout main -- "$pattern" || true
-                git add "$pattern" || true
-              done
-              git commit -m "Merge remote-tracking branch 'upstream/main'"
-
-              if ! git push --force -u origin sync-upstream; then
-                echo "::warning title=Sync Upstream Failed::PAT_TOKEN is required for workflow updates"
-                exit 0
-              fi
-
-              gh pr create --repo ${{ github.repository }} --base main --head sync-upstream --title "Sync Upstream" --body "Merge remote-tracking branch 'upstream/main'" || {
-                if [ "$(gh pr list --repo ${{ github.repository }} --head sync-upstream --state open --json number -q 'length')" -eq 0 ]; then
-                  echo "::error title=Sync Upstream Failed::No permission to create Pull Request"
-                  git push origin --delete sync-upstream || true
-                  exit 1
-                fi
-              }
-              exit 0
-            fi
-          fi
+          git merge --no-commit --no-ff -X theirs upstream/main || MERGE_FAILED=true
 
           for pattern in $IGNORE_LIST; do
-            git restore --source=HEAD --staged --worktree -- "$pattern" 2>/dev/null || true
+            git checkout origin/main -- "$pattern" 2>/dev/null || true
+            git add "$pattern" 2>/dev/null || true
           done
-          
-          git commit --allow-empty -m "Merge remote-tracking branch 'upstream/main'"
-          if ! git push; then
-            echo "::warning title=Sync Upstream Failed::PAT_TOKEN is required for workflow updates"
+
+          if [[ "$MERGE_FAILED" == true ]] && [[ -n "$(git diff --name-only --diff-filter=U)" ]]; then
+            echo "::error title=Sync Upstream::Unresolved non-policy conflicts require manual review."
+            git diff --name-only --diff-filter=U
+            exit 1
+          fi
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "::notice title=Sync upstream::Upstream changes only touched protected fork-owned files."
             exit 0
           fi
-          echo "::notice title=Sync upstream::New commits were found and synced."
+          git commit -m "Merge remote-tracking branch 'upstream/main'"
+
+          if ! git push --force-with-lease -u origin sync-upstream; then
+            echo "::error title=Sync Upstream Failed::A PAT with branch/workflow permission may be required."
+            exit 1
+          fi
+
+          if [[ "$(gh pr list --repo ${{ github.repository }} --base main --head sync-upstream --state open --json number -q 'length')" -eq 0 ]]; then
+            gh pr create \
+              --repo ${{ github.repository }} \
+              --base main \
+              --head sync-upstream \
+              --title "Sync Upstream" \
+              --body "Automated upstream sync. Review and merge only after Repository health passes."
+          else
+            echo "::notice title=Sync upstream::Updated existing sync-upstream pull request."
+          fi
