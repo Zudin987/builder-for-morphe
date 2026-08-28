@@ -69,6 +69,14 @@ jobs:
           fi
           grep -R -Fq 'astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d' .github/workflows
 
+          expected_apksigner_blob='594b263aa1c621bae45e5fd9740ca4dcccbf1c33'
+          actual_apksigner_blob="$(git rev-parse HEAD:bin/apksigner.jar)"
+          if [[ "$actual_apksigner_blob" != "$expected_apksigner_blob" ]]; then
+            echo "::error::bin/apksigner.jar changed. Review the new binary before updating the pinned Git blob."
+            echo "expected=$expected_apksigner_blob actual=$actual_apksigner_blob"
+            exit 1
+          fi
+
           if grep -Fq 'timed out|timeout' .github/scripts/run_build_resilient.sh; then
             echo "::error::Generic patcher timeout text must not be classified as a stock-source outage."
             exit 1
