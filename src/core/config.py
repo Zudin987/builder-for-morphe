@@ -23,6 +23,10 @@ BUILD_DIR: Path = Path("build")
 CONFIG_PATH: Path = Path("config.toml")
 SOURCES: tuple[str, ...] = ("apkmirror", "github")
 VALID_ARCHES: frozenset[str] = frozenset({"both", "all", "arm64-v8a", "armeabi-v7a", "x86_64", "x86"})
+# These enabled apps do not currently have an original-signer fingerprint in
+# sig.txt. Keep the exception explicit and small instead of disabling strict
+# verification globally. Remove an entry as soon as a trusted fingerprint is added.
+_CI_SIGCHECK_EXCEPTIONS: frozenset[str] = frozenset({"Brave", "Backdrops"})
 
 
 @dataclass(slots=True, frozen=True)
@@ -66,7 +70,7 @@ def parse_config(data: dict[str, object]) -> Config:
     configured_strict = _parse_bool(data, "strict-sigcheck", True)
     # Release CI must never silently patch an APK whose original signer is unknown.
     # Local users can still opt out in config.toml for troubleshooting, and individual
-    # entries retain the explicit skip-sigcheck escape hatch where upstream requires it.
+    # entries retain an explicit escape hatch where a trusted fingerprint is unavailable.
     strict_sigcheck = True if os.getenv("GITHUB_ACTIONS") == "true" else configured_strict
     return Config(
         parallel_jobs=int(data.get("parallel-jobs", os.process_cpu_count() or 1)),
@@ -78,6 +82,7 @@ def parse_config(data: dict[str, object]) -> Config:
 
 def parse_app_entries(data: dict[str, object], main: Config) -> list[AppEntry]:
     entries: list[AppEntry] = []
+    in_ci = os.getenv("GITHUB_ACTIONS") == "true"
     for table_name, t in data.items():
         if not isinstance(t, dict):
             continue
@@ -112,6 +117,8 @@ def parse_app_entries(data: dict[str, object], main: Config) -> list[AppEntry]:
             if s:
                 keywords.append(s.lower())
 
+        explicit_skip_sigcheck = _parse_bool(t, "skip-sigcheck", False)
+        ci_missing_sig_exception = in_ci and table_name in _CI_SIGCHECK_EXCEPTIONS
         entries.append(AppEntry(
             table=table_name,
             app_name=str(t.get("app-name", table_name.replace("-", " "))),
@@ -125,7 +132,7 @@ def parse_app_entries(data: dict[str, object], main: Config) -> list[AppEntry]:
             exclusive_patches=_parse_bool(t, "exclusive-patches", False),
             cli_source=str(t.get("cli-source", main.cli_source)),
             cli_version=str(t.get("cli-version", main.cli_version)),
-            skip_sigcheck=_parse_bool(t, "skip-sigcheck", False),
+            skip_sigcheck=explicit_skip_sigcheck or ci_missing_sig_exception,
             enabled=_parse_bool(t, "enabled", True),
             changelog_keywords=keywords,
         ))
