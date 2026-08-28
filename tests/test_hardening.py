@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.core.config import AppEntry, parse_config
+from src.core.config import AppEntry, parse_app_entries, parse_config
 from src.core.prebuilts import PrebuiltsError, _verify_digest, get_highest_ver
 from src.scrapers.apkmirror import APKMirrorError, APKMirrorScraper
 from src.scripts.matrix import _fetch_our_releases
@@ -109,6 +109,32 @@ class HardeningTests(unittest.TestCase):
         with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=False):
             cfg = parse_config({"strict-sigcheck": False})
         self.assertTrue(cfg.strict_sigcheck)
+
+    def test_ci_signature_exceptions_are_explicit_and_narrow(self):
+        data = {
+            "Brave": {
+                "enabled": True,
+                "apkmirror-dlurl": "https://example.invalid/brave",
+                "patches": {"github:example/patches": []},
+            },
+            "Backdrops": {
+                "enabled": True,
+                "apkmirror-dlurl": "https://example.invalid/backdrops",
+                "patches": {"github:example/patches": []},
+            },
+            "YouTube": {
+                "enabled": True,
+                "apkmirror-dlurl": "https://example.invalid/youtube",
+                "patches": {"github:example/patches": []},
+            },
+        }
+        with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=False):
+            cfg = parse_config(data)
+            entries = {entry.table: entry for entry in parse_app_entries(data, cfg)}
+
+        self.assertTrue(entries["Brave"].skip_sigcheck)
+        self.assertTrue(entries["Backdrops"].skip_sigcheck)
+        self.assertFalse(entries["YouTube"].skip_sigcheck)
 
     def test_apkmirror_missing_button_is_scraper_error(self):
         scraper = APKMirrorScraper(FakeNet("<html><body>layout changed</body></html>"))
