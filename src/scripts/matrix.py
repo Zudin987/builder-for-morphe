@@ -1,5 +1,6 @@
 # ---------------------------------------------------------
-# Copyright (C) 2026 krvstek
+# Copyright (C) 2026 krvstek (Original Author)
+# Copyright (C) 2026 The uni-apks Contributors (Modifications)
 # 
 # DO NOT REMOVE OR ALTER THIS COPYRIGHT HEADER.
 # This file is part of uni-apks.
