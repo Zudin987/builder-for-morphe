@@ -37,14 +37,30 @@ jobs:
       - name: Validate shell scripts
         run: bash -n .github/scripts/*.sh
 
-      - name: Verify release safety invariants
+      - name: Verify release and automation safety invariants
         shell: bash
         run: |
           set -euo pipefail
           grep -Fq "vars.ALLOW_PUBLIC_APK_RELEASES == 'true'" .github/workflows/build.yml
           grep -Fq "vars.ALLOW_PUBLIC_APK_RELEASES != 'true'" .github/workflows/build.yml
+
           if grep -Fq 'timed out|timeout' .github/scripts/run_build_resilient.sh; then
             echo "::error::Generic patcher timeout text must not be classified as a stock-source outage."
+            exit 1
+          fi
+
+          if grep -Fq 'except Exception' .github/scripts/check_app_updates.py; then
+            echo "::error::The app-version watcher must not swallow arbitrary programming errors."
+            exit 1
+          fi
+
+          grep -Fq 'git checkout -B sync-upstream origin/main' .github/workflows/sync.yml
+          grep -Fq 'git push --force-with-lease -u origin sync-upstream' .github/workflows/sync.yml
+          grep -Fq -- '--head sync-upstream' .github/workflows/sync.yml
+          unexpected_push="$(grep -E '^[[:space:]]+git push' .github/workflows/sync.yml | grep -v 'sync-upstream' || true)"
+          if [[ -n "$unexpected_push" ]]; then
+            echo "::error::Upstream sync must not push executable changes directly to main."
+            printf '%s\n' "$unexpected_push"
             exit 1
           fi
 
