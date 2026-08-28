@@ -81,11 +81,17 @@ class APKMirrorScraper(BaseScraper):
             is_bundle = dl_url[1] == "BUNDLE"
 
         soup_dl = _parse_html(release_html)
-        btn = soup_dl.select_one("a.btn")
-        btn_url = urljoin("https://www.apkmirror.com", btn["href"])
+        btn = soup_dl.select_one("a.btn[href]")
+        if btn is None:
+            raise APKMirrorError("Download button not found; APKMirror page layout may have changed")
+        btn_url = urljoin("https://www.apkmirror.com", str(btn["href"]))
+
         soup_final = _parse_html(self.net.get(btn_url))
-        dl_link = soup_final.select_one("span > a[rel=nofollow]")
-        final_url = urljoin("https://www.apkmirror.com", dl_link["href"])
+        dl_link = soup_final.select_one("span > a[rel=nofollow][href]")
+        if dl_link is None:
+            raise APKMirrorError("Final download link not found; APKMirror page layout may have changed")
+        final_url = urljoin("https://www.apkmirror.com", str(dl_link["href"]))
+
         out_path = dest.with_suffix(".apkm") if is_bundle else dest
         self.net.download(final_url, out_path)
         return DownloadResult(path=out_path, is_bundle=is_bundle)
