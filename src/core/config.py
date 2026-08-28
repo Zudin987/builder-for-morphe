@@ -63,12 +63,17 @@ def _parse_bool(d: dict[str, object], key: str, default: bool) -> bool:
     raise ValueError(f"'{key}' must be a boolean (true/false without quotes), got {type(value).__name__}")
 
 def parse_config(data: dict[str, object]) -> Config:
+    configured_strict = _parse_bool(data, "strict-sigcheck", True)
+    # Release CI must never silently patch an APK whose original signer is unknown.
+    # Local users can still opt out in config.toml for troubleshooting, and individual
+    # entries retain the explicit skip-sigcheck escape hatch where upstream requires it.
+    strict_sigcheck = True if os.getenv("GITHUB_ACTIONS") == "true" else configured_strict
     return Config(
         parallel_jobs=int(data.get("parallel-jobs", os.process_cpu_count() or 1)),
         brand=str(data.get("brand", "Morphe")),
         cli_version=str(data.get("cli-version", "latest")),
         cli_source=str(data.get("cli-source", "github:MorpheApp/morphe-desktop")),
-        strict_sigcheck=_parse_bool(data, "strict-sigcheck", True),
+        strict_sigcheck=strict_sigcheck,
     )
 
 def parse_app_entries(data: dict[str, object], main: Config) -> list[AppEntry]:
