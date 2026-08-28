@@ -1,0 +1,80 @@
+name: Repository health
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/uv-bin"
+          curl --retry 6 --retry-all-errors --retry-delay 3 -LsSf https://astral.sh/uv/0.12.0/install.sh | env UV_UNMANAGED_INSTALL="$RUNNER_TEMP/uv-bin" sh
+          echo "$RUNNER_TEMP/uv-bin" >> "$GITHUB_PATH"
+
+      - name: Install locked dependencies
+        run: uv sync --frozen
+
+      - name: Compile Python sources
+        run: uv run python -m compileall -q main.py src .github/scripts tests
+
+      - name: Run regression tests
+        env:
+          GITHUB_ACTIONS: "true"
+        run: uv run python -m unittest discover -s tests -v
+
+      - name: Validate shell scripts
+        run: bash -n .github/scripts/*.sh
+
+      - name: Verify release safety invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq "vars.ALLOW_PUBLIC_APK_RELEASES == 'true'" .github/workflows/build.yml
+          grep -Fq "vars.ALLOW_PUBLIC_APK_RELEASES != 'true'" .github/workflows/build.yml
+          if grep -Fq 'timed out|timeout' .github/scripts/run_build_resilient.sh; then
+            echo "::error::Generic patcher timeout text must not be classified as a stock-source outage."
+            exit 1
+          fi
+
+      - name: Block generated distribution output
+        shell: bash
+        run: |
+          set -euo pipefail
+          forbidden="$(git ls-files | grep -Ei '\.(apk|aab|apks|xapk|exe|msi|zip|7z|rar)$' || true)"
+          if [[ -n "$forbidden" ]]; then
+            echo "::error::Generated app/distribution files must not be committed."
+            printf '%s\n' "$forbidden"
+            exit 1
+          fi
+
+      - name: Block unexpected signing material
+        shell: bash
+        run: |
+          set -euo pipefail
+          forbidden="$(git ls-files | grep -Ei '(^|/)\.env($|\.)|\.(jks|keystore|pem|key|p12|pfx)$|(^|/)key\.properties$' | grep -v '^morphe\.keystore$' || true)"
+          if [[ -n "$forbidden" ]]; then
+            echo "::error::Unexpected signing material or credential files are tracked."
+            printf '%s\n' "$forbidden"
+            exit 1
+          fi
+
+      - name: Block obvious committed secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git grep -nEI -- '-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}' -- . ':!.github/workflows/repo-health.yml' 2>/dev/null; then
+            echo "::error::Possible secret material detected in tracked source."
+            exit 1
+          fi
