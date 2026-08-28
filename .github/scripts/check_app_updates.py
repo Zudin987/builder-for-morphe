@@ -12,13 +12,15 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.core.builder import _find_pkg_name, _make_scraper, _resolve_version  # noqa: E402, I001
-from src.core.config import CONFIG_PATH, TEMP_DIR, load_toml, parse_app_entries, parse_config  # noqa: E402
-from src.core.network import NetworkManager  # noqa: E402
-from src.core.patcher import PatcherCLI  # noqa: E402
-from src.core.prebuilts import APKSIGNER, fetch_cli, fetch_mpp  # noqa: E402
+from src.core.config import CONFIG_PATH, TEMP_DIR, AppEntry, load_toml, parse_app_entries, parse_config  # noqa: E402
+from src.core.network import NetworkError, NetworkManager  # noqa: E402
+from src.core.patcher import PatcherCLI, PatcherError  # noqa: E402
+from src.core.prebuilts import APKSIGNER, PrebuiltsError, fetch_cli, fetch_mpp  # noqa: E402
+from src.scrapers.base import ScraperError  # noqa: E402
 
 WATCHED_VERSIONS = {"auto", "latest", "exp"}
 MAX_RELEASE_PAGES = 5
+_EXPECTED_TRANSIENT_ERRORS = (NetworkError, ScraperError, PatcherError, PrebuiltsError)
 
 
 def _normalize_version(version: str) -> str:
@@ -34,7 +36,12 @@ def _expected_arches(arch: str) -> tuple[str, ...]:
     return ("arm64-v8a", "armeabi-v7a") if arch == "both" else (arch,)
 
 
-def _published_asset_names(repo: str, net: NetworkManager) -> list[str]:
+def _release_asset_names(repo: str, net: NetworkManager) -> list[str]:
+    """Return APK asset names from both published and draft releases.
+
+    Draft releases are successful build state too. Ignoring them causes private-by-default
+    repositories to rebuild the same app every scheduled run.
+    """
     names: list[str] = []
     for page in range(1, MAX_RELEASE_PAGES + 1):
         raw = net.get(
@@ -43,9 +50,11 @@ def _published_asset_names(repo: str, net: NetworkManager) -> list[str]:
         )
         releases = json.loads(raw)
         for release in releases:
-            if release.get("draft"):
-                continue
-            names.extend(asset.get("name", "") for asset in release.get("assets", []))
+            names.extend(
+                asset.get("name", "")
+                for asset in release.get("assets", [])
+                if asset.get("name", "").endswith(".apk")
+            )
         if len(releases) < 100:
             break
     return names
@@ -60,6 +69,34 @@ def _built_version(asset_names: list[str], app_name: str, brand: str, arch: str)
         if match:
             return _normalize_version(match.group(1))
     return None
+
+
+def _resolve_targets(
+    entry: AppEntry,
+    patcher: PatcherCLI,
+    list_patches: str,
+    pkg_name: str,
+    dl_from: str,
+    scrapers: dict,
+) -> dict[str, str]:
+    """Resolve the target independently for each architecture.
+
+    Version-code metadata can differ by architecture, so passing the old aggregate
+    value (for example ``both``) would make compatible-version detection unreliable.
+    """
+    targets: dict[str, str] = {}
+    for arch in _expected_arches(entry.arch):
+        version, _, _ = _resolve_version(
+            entry,
+            patcher,
+            list_patches,
+            pkg_name,
+            dl_from,
+            scrapers,
+            arch,
+        )
+        targets[arch] = _normalize_version(version)
+    return targets
 
 
 def main() -> int:
@@ -92,81 +129,76 @@ def main() -> int:
 
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
     apps_to_build: dict[str, set[str]] = {}
-    release_lookup_failed = False
 
     # Upstream helpers print progress to stdout. Redirect that progress to stderr
     # so stdout remains exactly one JSON object for the workflow to consume.
     with contextlib.redirect_stdout(sys.stderr):
         with NetworkManager() as net:
             try:
-                asset_names = _published_asset_names(repo, net)
-            except Exception as exc:
+                asset_names = _release_asset_names(repo, net)
+            except _EXPECTED_TRANSIENT_ERRORS as exc:
                 print(f"App-version watcher: could not read our releases: {exc}", file=sys.stderr)
-                release_lookup_failed = True
-                asset_names = []
+                print("{}")
+                return 0
 
-            if not release_lookup_failed:
-                cli_cache: dict[tuple[str, str], Path] = {}
-                mpp_cache: dict[tuple[str, str], Path] = {}
+            cli_cache: dict[tuple[str, str], Path] = {}
+            mpp_cache: dict[tuple[str, str], Path] = {}
 
-                for entry in entries:
-                    try:
-                        scrapers = {source: _make_scraper(source, net) for source in entry.dl_urls}
-                        pkg_name, dl_from, _ = _find_pkg_name(entry, scrapers)
+            for entry in entries:
+                try:
+                    scrapers = {source: _make_scraper(source, net) for source in entry.dl_urls}
+                    pkg_name, dl_from, _ = _find_pkg_name(entry, scrapers)
 
-                        cli_key = (entry.cli_source, entry.cli_version)
-                        if cli_key not in cli_cache:
-                            cli_cache[cli_key] = fetch_cli(entry.cli_source, entry.cli_version, net)
+                    cli_key = (entry.cli_source, entry.cli_version)
+                    if cli_key not in cli_cache:
+                        cli_cache[cli_key] = fetch_cli(entry.cli_source, entry.cli_version, net)
 
-                        app_mpp_map: dict[tuple[str, str], Path] = {}
-                        for source, spec in entry.patches.items():
-                            key = (source, spec["version"])
-                            if key not in mpp_cache:
-                                mpp_cache[key] = fetch_mpp(source, spec["version"], net)
-                            app_mpp_map[key] = mpp_cache[key]
+                    app_mpp_map: dict[tuple[str, str], Path] = {}
+                    for source, spec in entry.patches.items():
+                        key = (source, spec["version"])
+                        if key not in mpp_cache:
+                            mpp_cache[key] = fetch_mpp(source, spec["version"], net)
+                        app_mpp_map[key] = mpp_cache[key]
 
-                        patcher = PatcherCLI(cli_cache[cli_key], app_mpp_map, APKSIGNER)
-                        list_patches = patcher.list_patches(
-                            pkg_name,
-                            experimental=entry.version == "exp",
-                        )
-                        target_version, _ = _resolve_version(
-                            entry,
-                            patcher,
-                            list_patches,
-                            pkg_name,
-                            dl_from,
-                            scrapers,
-                        )
-                        target = _normalize_version(target_version)
+                    patcher = PatcherCLI(cli_cache[cli_key], app_mpp_map, APKSIGNER)
+                    list_patches = patcher.list_patches(
+                        pkg_name,
+                        experimental=entry.version == "exp",
+                    )
+                    targets = _resolve_targets(
+                        entry,
+                        patcher,
+                        list_patches,
+                        pkg_name,
+                        dl_from,
+                        scrapers,
+                    )
 
-                        needs_build = False
-                        old_versions: list[str] = []
-                        for arch in _expected_arches(entry.arch):
-                            built = _built_version(asset_names, entry.app_name, entry.brand, arch)
-                            old_versions.append(built or "missing")
-                            if built != target:
-                                needs_build = True
+                    needs_build = False
+                    state_parts: list[str] = []
+                    for arch, target in targets.items():
+                        built = _built_version(asset_names, entry.app_name, entry.brand, arch)
+                        state_parts.append(f"{arch}:{built or 'missing'}->{target}")
+                        if built != target:
+                            needs_build = True
 
-                        if needs_build:
-                            brand = entry.brand.lower()
-                            apps_to_build.setdefault(brand, set()).add(entry.table)
-                            print(
-                                f"App-version watcher: {entry.table} target={target} built={','.join(old_versions)} -> rebuild only {entry.table} in {brand}",
-                                file=sys.stderr,
-                            )
-                    except Exception as exc:
-                        # This watcher is an enhancement only. The upstream patch-release
-                        # checker must keep working even if one app source temporarily fails.
+                    if needs_build:
+                        brand = entry.brand.lower()
+                        apps_to_build.setdefault(brand, set()).add(entry.table)
                         print(
-                            f"App-version watcher: skipped {entry.table}: {exc}",
+                            f"App-version watcher: {entry.table} {' '.join(state_parts)} -> rebuild only {entry.table} in {brand}",
                             file=sys.stderr,
                         )
+                except _EXPECTED_TRANSIENT_ERRORS as exc:
+                    # Remote app/patch sources are allowed to fail independently. Internal
+                    # programming errors (TypeError, AttributeError, signature drift, etc.)
+                    # are deliberately not swallowed and will fail CI.
+                    print(
+                        f"App-version watcher: transiently skipped {entry.table}: {exc}",
+                        file=sys.stderr,
+                    )
 
-    if release_lookup_failed:
-        print("{}")
-    else:
-        print(json.dumps({brand: sorted(apps) for brand, apps in sorted(apps_to_build.items())}))
+    print(json.dumps({brand: sorted(apps) for brand, apps in sorted(apps_to_build.items())}))
     return 0
 
 

@@ -1,0 +1,135 @@
+name: Repository health
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Install locked dependencies
+        run: uv sync --frozen
+
+      - name: Compile Python sources
+        run: uv run python -m compileall -q main.py src .github/scripts tests
+
+      - name: Validate current configuration
+        env:
+          GITHUB_ACTIONS: "true"
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          from src.core.config import CONFIG_PATH, load_toml, parse_app_entries, parse_config
+
+          data = load_toml(CONFIG_PATH)
+          config = parse_config(data)
+          entries = parse_app_entries(data, config)
+          assert config.strict_sigcheck is True
+          assert entries
+          assert any(entry.enabled for entry in entries)
+          print(f"Validated {len(entries)} configured app entries")
+          PY
+
+      - name: Validate workflow YAML syntax
+        run: ruby -e 'require "yaml"; Dir[".github/workflows/*.{yml,yaml}"].sort.each { |f| YAML.parse_file(f); puts "validated " + f }'
+
+      - name: Run regression tests
+        env:
+          GITHUB_ACTIONS: "true"
+        run: uv run python -m unittest discover -s tests -v
+
+      - name: Validate shell scripts
+        run: bash -n .github/scripts/*.sh
+
+      - name: Verify release and automation safety invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq "vars.ALLOW_PUBLIC_APK_RELEASES == 'true'" .github/workflows/build.yml
+          grep -Fq "vars.ALLOW_PUBLIC_APK_RELEASES != 'true'" .github/workflows/build.yml
+
+          forbidden_uv_installer='https://astral.sh/uv/'
+          for wf in .github/workflows/build.yml .github/workflows/ci.yml .github/workflows/sync.yml; do
+            if grep -nF "$forbidden_uv_installer" "$wf"; then
+              echo "::error::Workflow $wf must use the commit-pinned setup-uv action, not curl a remote installer into sh."
+              exit 1
+            fi
+          done
+          pinned_uv_action='astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d'
+          for wf in .github/workflows/build.yml .github/workflows/ci.yml .github/workflows/repo-health.yml; do
+            grep -Fq "$pinned_uv_action" "$wf"
+          done
+
+          expected_apksigner_blob='594b263aa1c621bae45e5fd9740ca4dcccbf1c33'
+          actual_apksigner_blob="$(git rev-parse HEAD:bin/apksigner.jar)"
+          if [[ "$actual_apksigner_blob" != "$expected_apksigner_blob" ]]; then
+            echo "::error::bin/apksigner.jar changed. Review the new binary before updating the pinned Git blob."
+            echo "expected=$expected_apksigner_blob actual=$actual_apksigner_blob"
+            exit 1
+          fi
+
+          if grep -Fq 'timed out|timeout' .github/scripts/run_build_resilient.sh; then
+            echo "::error::Generic patcher timeout text must not be classified as a stock-source outage."
+            exit 1
+          fi
+
+          if grep -Fq 'except Exception' .github/scripts/check_app_updates.py; then
+            echo "::error::The app-version watcher must not swallow arbitrary programming errors."
+            exit 1
+          fi
+
+          grep -Fq 'git checkout -B sync-upstream origin/main' .github/workflows/sync.yml
+          grep -Fq 'git push --force-with-lease -u origin sync-upstream' .github/workflows/sync.yml
+          grep -Fq -- '--head sync-upstream' .github/workflows/sync.yml
+          unexpected_push="$(grep -E '^[[:space:]]+git push' .github/workflows/sync.yml | grep -v 'sync-upstream' || true)"
+          if [[ -n "$unexpected_push" ]]; then
+            echo "::error::Upstream sync must not push executable changes directly to main."
+            printf '%s\n' "$unexpected_push"
+            exit 1
+          fi
+
+      - name: Block generated distribution output
+        shell: bash
+        run: |
+          set -euo pipefail
+          forbidden="$(git ls-files | grep -Ei '\.(apk|aab|apks|xapk|exe|msi|zip|7z|rar)$' || true)"
+          if [[ -n "$forbidden" ]]; then
+            echo "::error::Generated app/distribution files must not be committed."
+            printf '%s\n' "$forbidden"
+            exit 1
+          fi
+
+      - name: Block unexpected signing material
+        shell: bash
+        run: |
+          set -euo pipefail
+          forbidden="$(git ls-files | grep -Ei '(^|/)\.env($|\.)|\.(jks|keystore|pem|key|p12|pfx)$|(^|/)key\.properties$' | grep -v '^morphe\.keystore$' || true)"
+          if [[ -n "$forbidden" ]]; then
+            echo "::error::Unexpected signing material or credential files are tracked."
+            printf '%s\n' "$forbidden"
+            exit 1
+          fi
+
+      - name: Block obvious committed secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git grep -nEI -- '-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}' -- . ':!.github/workflows/repo-health.yml' 2>/dev/null; then
+            echo "::error::Possible secret material detected in tracked source."
+            exit 1
+          fi

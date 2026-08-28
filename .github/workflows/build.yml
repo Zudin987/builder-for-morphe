@@ -77,13 +77,11 @@ jobs:
           git checkout --detach FETCH_HEAD
           git submodule update --init --recursive --depth=1
 
-      - name: Install uv
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/uv-bin"
-          curl --retry 6 --retry-all-errors --retry-delay 3 -LsSf https://astral.sh/uv/0.12.0/install.sh | env UV_UNMANAGED_INSTALL="$RUNNER_TEMP/uv-bin" sh
-          echo "$RUNNER_TEMP/uv-bin" >> "$GITHUB_PATH"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.0"
+          enable-cache: false
 
       - name: Install dependencies
         run: uv sync --frozen
@@ -101,9 +99,6 @@ jobs:
           VER="$(date +%y.%m.%d)-${{ inputs.patch_source }}"
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
 
-          # Remove stale duplicate release objects for today's source/tag.
-          # Retry GitHub's API because transient 502/503 responses are common
-          # during large workflow batches and should not fail a healthy APK build.
           RELEASES_JSON="$(gh_retry api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100")"
           mapfile -t OLD_RELEASE_IDS < <(
             jq -r --arg ver "$VER" '.[] | select(.tag_name == $ver) | .id' <<<"$RELEASES_JSON"
@@ -141,8 +136,6 @@ jobs:
 
           TARGETS="$(jq -c 'if type == "array" then unique else [] end' <<<"${TARGET_APPS:-[]}")"
           if [[ "$(jq 'length' <<<"$TARGETS")" -gt 0 ]]; then
-            # Resolve the normal full matrix with changelog filtering disabled,
-            # then keep only exact app IDs reported by the compatible-version watcher.
             ALL_RESULT="$(FILTER_CHANGELOG=false uv run python -m src.scripts.matrix get-matrix '${{ inputs.patch_source }}')"
             TARGET_RESULT="$(jq -c --argjson targets "$TARGETS" '
               {
@@ -159,9 +152,6 @@ jobs:
             ')"
           fi
 
-          # Proton VPN's current Rushi patch is known to fail. Keep it out of CI
-          # until its patch source is fixed, while allowing other Rushi apps such
-          # as Waze to continue building normally.
           RESULT="$(jq 'if (.include | type) == "array" then .include |= map(select(.id != "Proton-VPN_rushi")) else . end' <<<"$RESULT")"
 
           echo "Selected app matrix: $(jq -c '.include' <<<"$RESULT")"
@@ -198,13 +188,11 @@ jobs:
           echo "$JAVA_HOME_21_X64/bin" >> "$GITHUB_PATH"
           "$JAVA_HOME_21_X64/bin/java" -version
 
-      - name: Install uv
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/uv-bin"
-          curl --retry 6 --retry-all-errors --retry-delay 3 -LsSf https://astral.sh/uv/0.12.0/install.sh | env UV_UNMANAGED_INSTALL="$RUNNER_TEMP/uv-bin" sh
-          echo "$RUNNER_TEMP/uv-bin" >> "$GITHUB_PATH"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.0"
+          enable-cache: false
 
       - name: Install dependencies
         run: uv sync --frozen
@@ -304,13 +292,11 @@ jobs:
           git fetch --depth=1 origin "$GITHUB_SHA"
           git checkout --detach FETCH_HEAD
 
-      - name: Install uv
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/uv-bin"
-          curl --retry 6 --retry-all-errors --retry-delay 3 -LsSf https://astral.sh/uv/0.12.0/install.sh | env UV_UNMANAGED_INSTALL="$RUNNER_TEMP/uv-bin" sh
-          echo "$RUNNER_TEMP/uv-bin" >> "$GITHUB_PATH"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.0"
+          enable-cache: false
 
       - name: Install dependencies
         run: uv sync --frozen
@@ -329,12 +315,12 @@ jobs:
           echo "has_apks=${has}" >> "$GITHUB_OUTPUT"
           echo "Release has APKs: $has"
 
-      - name: Keep APK builds private when explicitly disabled
-        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES == 'false'
-        run: echo "::notice::APK build completed; release remains a draft because ALLOW_PUBLIC_APK_RELEASES=false."
+      - name: Keep APK builds private unless explicitly enabled
+        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES != 'true'
+        run: echo "::notice::APK build completed; release remains a draft unless ALLOW_PUBLIC_APK_RELEASES=true."
 
       - name: Download and remove build logs
-        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES != 'false'
+        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
@@ -353,7 +339,7 @@ jobs:
           done < <(jq -r '.[] | select(.name | startswith("build-")) | [.id, .name] | @tsv' <<<"$ASSETS_JSON")
 
       - name: Combine logs and finalize release
-        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES != 'false'
+        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.prepare.outputs.version }}
@@ -377,7 +363,7 @@ jobs:
           echo "Published $TAG"
 
       - name: Send Telegram notification
-        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES != 'false' && env.TG_TOKEN != '' && env.TG_CHAT != ''
+        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES == 'true' && env.TG_TOKEN != '' && env.TG_CHAT != ''
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT: ${{ secrets.TG_CHAT }}

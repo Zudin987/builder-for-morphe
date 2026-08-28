@@ -19,11 +19,11 @@ fi
 is_stock_source_failure() {
   local log="$1"
 
-  # Only soften failures that look like source/network availability problems.
-  # Do not classify a traceback merely because it mentions a scraper module;
-  # parser/code regressions should stay red so they are not hidden for days.
+  # Only soften failures that clearly originate in remote stock-app discovery or
+  # download. Do not match generic "timeout" text: the Java patcher itself has a
+  # 10-minute timeout and that is a real build failure which must stay red.
   grep -Eiq \
-    "No matching variant found for arch|HTTP (403|404|408|409|425|429|5[0-9]{2})|Request failed after [0-9]+ attempts|Download failed after [0-9]+ attempts|JS challenge detected|Challenge solver error|timed out|timeout|temporary failure|could not resolve host|name or service not known|connection (reset|refused|aborted)|remote end closed connection|remote disconnected|service unavailable|too many requests|rate limit" \
+    "No matching variant found for arch|HTTP (403|404|408|409|425|429|5[0-9]{2})|Request failed after [0-9]+ attempts|Download failed after [0-9]+ attempts|JS challenge detected|Challenge solver error|request error|download error|could not resolve host|name or service not known|connection (reset|refused|aborted)|remote end closed connection|remote disconnected|service unavailable|too many requests|rate limit" \
     "$log"
 }
 

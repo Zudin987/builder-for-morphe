@@ -12,12 +12,13 @@
 # See the AUTHORS file in the root directory for details.
 # ---------------------------------------------------------
 
+import hashlib
 import json
 import re
 from pathlib import Path
 
 from src.core.config import TEMP_DIR
-from src.core.logger import pr, wpr
+from src.core.logger import pr
 from src.core.network import NetworkManager
 
 APKSIGNER: Path = Path("bin/apksigner.jar")
@@ -27,9 +28,22 @@ _KNOWN_PREFIXES = ("gitlab:", "github:")
 class PrebuiltsError(Exception):
     pass
 
-def _ver_key(ver: str) -> tuple[int, ...]:
-    base = ver.split("-")[0]
-    return tuple(int(x) for x in re.findall(r"\d+", base)) or (0,)
+def _ver_key(ver: str) -> tuple[tuple[int, ...], int, tuple[tuple[int, int | str], ...], str]:
+    clean = ver.strip().lstrip("vV")
+    match = re.match(r"^(\d+(?:\.\d+)*)(?:[-+](.*))?$", clean)
+    if not match:
+        nums = tuple(int(x) for x in re.findall(r"\d+", clean)) or (0,)
+        return nums, 0, (), clean.lower()
+
+    base = tuple(int(x) for x in match.group(1).split("."))
+    prerelease = match.group(2)
+    if prerelease is None:
+        return base, 1, (), clean.lower()
+
+    tokens: list[tuple[int, int | str]] = []
+    for token in re.findall(r"\d+|[A-Za-z]+", prerelease):
+        tokens.append((1, int(token)) if token.isdigit() else (0, token.lower()))
+    return base, 0, tuple(tokens), clean.lower()
 
 def _strip_src_prefix(src: str) -> str:
     for prefix in _KNOWN_PREFIXES:
@@ -80,8 +94,26 @@ def _get_target_asset(assets: list, ext: str, src: str, ver: str) -> dict:
         raise PrebuiltsError(f"No asset (.{ext}) found for {src} @ {ver}")
 
     if len(target) > 1:
-        wpr(f"More than 1 asset found for {src} @ {ver}, falling back to the first one")
+        names = ", ".join(sorted(str(a.get("name", "")) for a in target))
+        raise PrebuiltsError(f"Ambiguous assets for {src} @ {ver}: {names}")
     return target[0]
+
+def _verify_digest(file: Path, digest: str | None, src: str, ver: str) -> None:
+    if not digest:
+        return
+    try:
+        algorithm, expected = digest.split(":", 1)
+    except ValueError as exc:
+        raise PrebuiltsError(f"Malformed asset digest for {src} @ {ver}: {digest!r}") from exc
+    if algorithm.lower() != "sha256":
+        raise PrebuiltsError(f"Unsupported asset digest algorithm for {src} @ {ver}: {algorithm}")
+
+    actual = hashlib.sha256(file.read_bytes()).hexdigest()
+    if actual.lower() != expected.lower():
+        file.unlink(missing_ok=True)
+        raise PrebuiltsError(
+            f"SHA-256 mismatch for {src} @ {ver}: expected {expected.lower()}, got {actual.lower()}"
+        )
 
 def _build_changelog(tag: str, org: str, name: str, tag_name: str, gitlab: bool, clean_src: str) -> str:
     changelog = f"> ⚙️ » {tag}: `{org}/{name}`  \n"
@@ -111,10 +143,6 @@ def _fetch_single_asset(src: str, tag: str, ver: str, ext: str, cl_dir: Path, ne
         release = json.loads(net.get(latest_url) if gitlab else net.get(latest_url, headers=net._gh_headers))
         ver = release.get("tag_name", "")
 
-    if file := _find_cached(cl_dir, ver, ext):
-        tag_name = _tag_from_filename(file)
-        return file, _build_changelog(tag, org, file.name, tag_name, gitlab, clean_src)
-
     if release is None:
         release_url = f"{base_url}/{ver}" if gitlab else f"{base_url}/tags/{ver}"
         release = json.loads(net.get(release_url) if gitlab else net.get(release_url, headers=net._gh_headers))
@@ -122,6 +150,12 @@ def _fetch_single_asset(src: str, tag: str, ver: str, ext: str, cl_dir: Path, ne
     raw_assets = release.get("assets", {}).get("links", []) if gitlab else release.get("assets", [])
     asset = _get_target_asset(raw_assets, ext, src, ver)
     file = cl_dir / asset["name"]
+
+    if file.exists():
+        _verify_digest(file, asset.get("digest") if not gitlab else None, src, ver)
+        tag_name = release.get("tag_name", "")
+        return file, _build_changelog(tag, org, asset["name"], tag_name, gitlab, clean_src)
+
     for old_file in cl_dir.glob(f"*.{ext}"):
         if old_file.is_file() and not old_file.name.startswith("tmp."):
             old_file.unlink(missing_ok=True)
@@ -132,6 +166,7 @@ def _fetch_single_asset(src: str, tag: str, ver: str, ext: str, cl_dir: Path, ne
         net.download(asset_url, file)
     else:
         net.download(asset_url, file, headers=net._gh_headers | {"Accept": "application/octet-stream"})
+        _verify_digest(file, asset.get("digest"), src, ver)
 
     tag_name = release.get("tag_name", "")
     return file, _build_changelog(tag, org, asset["name"], tag_name, gitlab, clean_src)
