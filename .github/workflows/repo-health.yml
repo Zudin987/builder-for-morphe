@@ -63,6 +63,12 @@ jobs:
           grep -Fq "vars.ALLOW_PUBLIC_APK_RELEASES == 'true'" .github/workflows/build.yml
           grep -Fq "vars.ALLOW_PUBLIC_APK_RELEASES != 'true'" .github/workflows/build.yml
 
+          if grep -R -nF 'https://astral.sh/uv/' .github/workflows; then
+            echo "::error::Workflows must use the commit-pinned setup-uv action, not curl a remote installer into sh."
+            exit 1
+          fi
+          grep -R -Fq 'astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d' .github/workflows
+
           if grep -Fq 'timed out|timeout' .github/scripts/run_build_resilient.sh; then
             echo "::error::Generic patcher timeout text must not be classified as a stock-source outage."
             exit 1
