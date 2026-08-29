@@ -11,7 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.core.builder import _find_pkg_name, _make_scraper, _resolve_version  # noqa: E402, I001
+from src.core.builder import BuilderError, _find_pkg_name, _make_scraper, _resolve_version  # noqa: E402, I001
 from src.core.config import CONFIG_PATH, TEMP_DIR, AppEntry, load_toml, parse_app_entries, parse_config  # noqa: E402
 from src.core.network import NetworkError, NetworkManager  # noqa: E402
 from src.core.patcher import PatcherCLI, PatcherError  # noqa: E402
@@ -20,7 +20,7 @@ from src.scrapers.base import ScraperError  # noqa: E402
 
 WATCHED_VERSIONS = {"auto", "latest", "exp"}
 MAX_RELEASE_PAGES = 5
-_EXPECTED_TRANSIENT_ERRORS = (NetworkError, ScraperError, PatcherError, PrebuiltsError)
+_EXPECTED_TRANSIENT_ERRORS = (BuilderError, NetworkError, ScraperError, PatcherError, PrebuiltsError)
 
 
 def _normalize_version(version: str) -> str:
@@ -37,10 +37,10 @@ def _expected_arches(arch: str) -> tuple[str, ...]:
 
 
 def _release_asset_names(repo: str, net: NetworkManager) -> list[str]:
-    """Return APK asset names from both published and draft releases.
+    """Return APK asset names visible to the normal Obtainium configuration.
 
-    Draft releases are successful build state too. Ignoring them causes private-by-default
-    repositories to rebuild the same app every scheduled run.
+    The updater ignores drafts and prereleases, so hidden release assets must not count
+    as an installed/built baseline. Otherwise a draft can suppress the next public build.
     """
     names: list[str] = []
     for page in range(1, MAX_RELEASE_PAGES + 1):
@@ -50,6 +50,8 @@ def _release_asset_names(repo: str, net: NetworkManager) -> list[str]:
         )
         releases = json.loads(raw)
         for release in releases:
+            if release.get("draft") or release.get("prerelease"):
+                continue
             names.extend(
                 asset.get("name", "")
                 for asset in release.get("assets", [])
@@ -190,9 +192,9 @@ def main() -> int:
                             file=sys.stderr,
                         )
                 except _EXPECTED_TRANSIENT_ERRORS as exc:
-                    # Remote app/patch sources are allowed to fail independently. Internal
-                    # programming errors (TypeError, AttributeError, signature drift, etc.)
-                    # are deliberately not swallowed and will fail CI.
+                    # Remote app/patch discovery failures are allowed to fail independently.
+                    # Internal programming errors (TypeError, AttributeError, signature drift,
+                    # etc.) are deliberately not swallowed and will still fail CI.
                     print(
                         f"App-version watcher: transiently skipped {entry.table}: {exc}",
                         file=sys.stderr,

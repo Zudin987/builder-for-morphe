@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   health:
+    name: Repository health
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -60,8 +61,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -Fq "vars.ALLOW_PUBLIC_APK_RELEASES == 'true'" .github/workflows/build.yml
-          grep -Fq "vars.ALLOW_PUBLIC_APK_RELEASES != 'true'" .github/workflows/build.yml
+          grep -Fq "vars.ALLOW_PUBLIC_APK_RELEASES == 'false'" .github/workflows/build.yml
+          grep -Fq "vars.ALLOW_PUBLIC_APK_RELEASES != 'false'" .github/workflows/build.yml
 
           forbidden_uv_installer='https://astral.sh/uv/'
           for wf in .github/workflows/build.yml .github/workflows/ci.yml .github/workflows/sync.yml; do

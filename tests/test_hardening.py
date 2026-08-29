@@ -67,13 +67,19 @@ class HardeningTests(unittest.TestCase):
         self.assertEqual(seen, ["arm64-v8a", "armeabi-v7a"])
         self.assertEqual(targets, {"arm64-v8a": "1.2.3", "armeabi-v7a": "1.2.3"})
 
-    def test_watcher_counts_draft_release_assets(self):
+    def test_watcher_uses_only_published_release_assets(self):
         releases = [
-            {"draft": True, "assets": [{"name": "example-morphe-v1.2.3-all.apk"}]},
-            {"draft": False, "assets": [{"name": "notes.txt"}]},
+            {"draft": True, "prerelease": False, "assets": [{"name": "example-morphe-v1.2.3-all.apk"}]},
+            {"draft": False, "prerelease": True, "assets": [{"name": "example-morphe-v1.2.4-all.apk"}]},
+            {"draft": False, "prerelease": False, "assets": [{"name": "example-morphe-v1.2.5-all.apk"}]},
         ]
         names = watcher._release_asset_names("owner/repo", FakeNet(releases))
-        self.assertEqual(names, ["example-morphe-v1.2.3-all.apk"])
+        self.assertEqual(names, ["example-morphe-v1.2.5-all.apk"])
+
+    def test_watcher_treats_builder_discovery_errors_as_transient_only(self):
+        self.assertIn(watcher.BuilderError, watcher._EXPECTED_TRANSIENT_ERRORS)
+        self.assertNotIn(TypeError, watcher._EXPECTED_TRANSIENT_ERRORS)
+        self.assertNotIn(AttributeError, watcher._EXPECTED_TRANSIENT_ERRORS)
 
     def test_matrix_uses_successful_draft_timestamp(self):
         releases = [
