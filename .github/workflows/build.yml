@@ -315,12 +315,12 @@ jobs:
           echo "has_apks=${has}" >> "$GITHUB_OUTPUT"
           echo "Release has APKs: $has"
 
-      - name: Keep APK builds private unless explicitly enabled
-        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES != 'true'
-        run: echo "::notice::APK build completed; release remains a draft unless ALLOW_PUBLIC_APK_RELEASES=true."
+      - name: Keep APK builds private when explicitly disabled
+        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES == 'false'
+        run: echo "::notice::APK build completed; release remains a draft because ALLOW_PUBLIC_APK_RELEASES=false."
 
       - name: Download and remove build logs
-        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES == 'true'
+        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES != 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
@@ -339,7 +339,7 @@ jobs:
           done < <(jq -r '.[] | select(.name | startswith("build-")) | [.id, .name] | @tsv' <<<"$ASSETS_JSON")
 
       - name: Combine logs and finalize release
-        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES == 'true'
+        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES != 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.prepare.outputs.version }}
@@ -363,7 +363,7 @@ jobs:
           echo "Published $TAG"
 
       - name: Send Telegram notification
-        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES == 'true' && env.TG_TOKEN != '' && env.TG_CHAT != ''
+        if: steps.check.outputs.has_apks == 'true' && vars.ALLOW_PUBLIC_APK_RELEASES != 'false' && env.TG_TOKEN != '' && env.TG_CHAT != ''
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT: ${{ secrets.TG_CHAT }}
