@@ -85,9 +85,11 @@ jobs:
             ')"
           else
             # Patch releases stay brand-level because one patch release may affect
-            # several apps. Compatible app-version changes are tracked by exact app
-            # ID, so an update to Reddit does not rebuild YouTube/YT Music as well.
-            PATCH_BRANDS="$(uv run python -m src.scripts.matrix get-matrix)"
+            # several apps. The fork-owned watcher compares upstream patch releases
+            # only against the newest published Obtainium-visible build for each brand.
+            # Compatible app-version changes are tracked by exact app ID, so an update
+            # to Reddit does not rebuild YouTube/YT Music as well.
+            PATCH_BRANDS="$(uv run python .github/scripts/check_patch_updates.py)"
             APP_UPDATES="$(uv run python .github/scripts/check_app_updates.py)"
             MATRIX="$(jq -cn \
               --argjson patches "$PATCH_BRANDS" \

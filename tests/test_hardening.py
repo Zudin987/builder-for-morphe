@@ -12,7 +12,6 @@ from unittest.mock import patch
 from src.core.config import AppEntry, parse_app_entries, parse_config
 from src.core.prebuilts import PrebuiltsError, _get_target_asset, _verify_digest, get_highest_ver
 from src.scrapers.apkmirror import APKMirrorError, APKMirrorScraper
-from src.scripts.matrix import _fetch_our_releases
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +20,12 @@ _spec = importlib.util.spec_from_file_location("check_app_updates", WATCHER_PATH
 assert _spec and _spec.loader
 watcher = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(watcher)
+
+PATCH_WATCHER_PATH = ROOT / ".github" / "scripts" / "check_patch_updates.py"
+_patch_spec = importlib.util.spec_from_file_location("check_patch_updates", PATCH_WATCHER_PATH)
+assert _patch_spec and _patch_spec.loader
+patch_watcher = importlib.util.module_from_spec(_patch_spec)
+_patch_spec.loader.exec_module(patch_watcher)
 
 
 def _entry(*, arch: str = "both") -> AppEntry:
@@ -81,19 +86,48 @@ class HardeningTests(unittest.TestCase):
         self.assertNotIn(TypeError, watcher._EXPECTED_TRANSIENT_ERRORS)
         self.assertNotIn(AttributeError, watcher._EXPECTED_TRANSIENT_ERRORS)
 
-    def test_matrix_uses_successful_draft_timestamp(self):
+    def test_patch_watcher_uses_newest_published_release_only(self):
         releases = [
             {
-                "tag_name": "26.08.29-morphe",
+                "tag_name": "26.08.31-morphe",
                 "draft": True,
+                "prerelease": False,
                 "published_at": None,
-                "updated_at": "2026-08-29T12:00:00+00:00",
-                "created_at": "2026-08-29T11:00:00+00:00",
+                "updated_at": "2026-08-31T18:00:00+00:00",
+                "assets": [{"name": "example-morphe-v1.2.9-all.apk"}],
+            },
+            {
+                "tag_name": "26.08.31-morphe",
+                "draft": False,
+                "prerelease": True,
+                "published_at": "2026-08-31T17:00:00+00:00",
+                "assets": [{"name": "example-morphe-v1.2.8-all.apk"}],
+            },
+            {
+                "tag_name": "26.08.29-morphe",
+                "draft": False,
+                "prerelease": False,
+                "published_at": "2026-08-29T12:00:00+00:00",
                 "assets": [{"name": "example-morphe-v1.2.3-all.apk"}],
-            }
+            },
+            {
+                "tag_name": "26.08.30-morphe",
+                "draft": False,
+                "prerelease": False,
+                "published_at": "2026-08-30T14:00:00+00:00",
+                "assets": [{"name": "example-morphe-v1.2.4-all.apk"}],
+            },
+            {
+                "tag_name": "26.08.30-de-vanced",
+                "draft": False,
+                "prerelease": False,
+                "published_at": "2026-08-30T15:00:00+00:00",
+                "assets": [{"name": "example-de-vanced-v1.0-all.apk"}],
+            },
         ]
-        state = _fetch_our_releases("owner/repo", FakeNet(releases))
-        self.assertEqual(state["morphe"], "2026-08-29T12:00:00+00:00")
+        state = patch_watcher._fetch_published_builds("owner/repo", FakeNet(releases))
+        self.assertEqual(state["morphe"], "2026-08-30T14:00:00+00:00")
+        self.assertEqual(state["de-vanced"], "2026-08-30T15:00:00+00:00")
 
     def test_prerelease_numeric_version_ordering(self):
         self.assertEqual(get_highest_ver(["v1.20.0-dev.2", "v1.20.0-dev.10"]), "v1.20.0-dev.10")
