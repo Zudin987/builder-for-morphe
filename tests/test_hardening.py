@@ -4,6 +4,8 @@ import hashlib
 import importlib.util
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -128,6 +130,21 @@ class HardeningTests(unittest.TestCase):
         state = patch_watcher._fetch_published_builds("owner/repo", FakeNet(releases))
         self.assertEqual(state["morphe"], "2026-08-30T14:00:00+00:00")
         self.assertEqual(state["de-vanced"], "2026-08-30T15:00:00+00:00")
+
+    def test_patch_watcher_runs_as_script_without_src_import_failure(self):
+        env = os.environ.copy()
+        env.pop("GITHUB_REPOSITORY", None)
+        proc = subprocess.run(
+            [sys.executable, str(PATCH_WATCHER_PATH)],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("GITHUB_REPOSITORY environment variable is not set", proc.stderr)
+        self.assertNotIn("ModuleNotFoundError", proc.stderr)
 
     def test_prerelease_numeric_version_ordering(self):
         self.assertEqual(get_highest_ver(["v1.20.0-dev.2", "v1.20.0-dev.10"]), "v1.20.0-dev.10")

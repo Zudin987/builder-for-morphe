@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from datetime import datetime
+from pathlib import Path
 
-from src.core.config import CONFIG_PATH, load_toml, parse_app_entries, parse_config
-from src.core.logger import epr
-from src.core.network import NetworkManager, ResourceNotFoundError
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from src.core.config import CONFIG_PATH, load_toml, parse_app_entries, parse_config  # noqa: E402
+from src.core.logger import epr  # noqa: E402
+from src.core.network import NetworkManager, ResourceNotFoundError  # noqa: E402
 
 MAX_RELEASE_PAGES = 5
 
