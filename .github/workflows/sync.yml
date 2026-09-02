@@ -89,12 +89,25 @@ jobs:
           fi
 
           if [[ "$(gh pr list --repo ${{ github.repository }} --base main --head sync-upstream --state open --json number -q 'length')" -eq 0 ]]; then
-            gh pr create \
+            set +e
+            PR_OUTPUT=$(gh pr create \
               --repo ${{ github.repository }} \
               --base main \
               --head sync-upstream \
               --title "Sync Upstream" \
-              --body "Automated upstream sync. Review and merge only after Repository health passes."
+              --body "Automated upstream sync. Review and merge only after Repository health passes." 2>&1)
+            PR_RC=$?
+            set -e
+
+            if (( PR_RC != 0 )); then
+              if grep -Fq "GitHub Actions is not permitted to create or approve pull requests" <<<"$PR_OUTPUT"; then
+                echo "::warning title=Sync upstream::sync-upstream was updated successfully, but repository Actions settings block automatic PR creation. The branch is ready for manual PR creation."
+                exit 0
+              fi
+              echo "$PR_OUTPUT" >&2
+              exit "$PR_RC"
+            fi
+            echo "$PR_OUTPUT"
           else
             echo "::notice title=Sync upstream::Updated existing sync-upstream pull request."
           fi
