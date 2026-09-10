@@ -2,7 +2,7 @@
 
 Personal fork of [nvbangg/builder-for-morphe](https://github.com/nvbangg/builder-for-morphe) for building Morphe-patched APKs with GitHub Actions.
 
-[Published builds](https://github.com/Zudin987/builder-for-morphe/releases) · [Project website](https://zudin987.github.io/projects/morphe-builder/) · [Report an issue](https://github.com/Zudin987/builder-for-morphe/issues)
+[Published builds](https://github.com/Zudin987/builder-for-morphe/releases) · [Project website](https://zudin987.github.io/projects/morphe-builder/) · [Pull requests](https://github.com/Zudin987/builder-for-morphe/pulls)
 
 This repository is the build configuration and tooling. APK availability depends on the app and successful published builds; check the release notes and architecture before installing.
 
