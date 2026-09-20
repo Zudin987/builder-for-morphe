@@ -134,13 +134,15 @@ def main() -> int:
 
     # Upstream helpers print progress to stdout. Redirect that progress to stderr
     # so stdout remains exactly one JSON object for the workflow to consume.
+    # Save the real output stream for the early-return error path inside redirect_stdout.
+    json_stdout = sys.stdout
     with contextlib.redirect_stdout(sys.stderr):
         with NetworkManager() as net:
             try:
                 asset_names = _release_asset_names(repo, net)
             except _EXPECTED_TRANSIENT_ERRORS as exc:
                 print(f"App-version watcher: could not read our releases: {exc}", file=sys.stderr)
-                print("{}")
+                print("{}", file=json_stdout)
                 return 0
 
             cli_cache: dict[tuple[str, str], Path] = {}
