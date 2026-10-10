@@ -90,11 +90,30 @@ def parse_app_entries(data: dict[str, object], main: Config) -> list[AppEntry]:
         if (arch := str(t.get("arch", "all"))) not in VALID_ARCHES:
             raise ValueError(f"Wrong arch '{arch}' for '{table_name}'")
 
+        # Reject unknown `*-dlurl` keys instead of silently ignoring a
+        # configured fallback (for example, an unimplemented Uptodown scraper).
+        unsupported_dlurl_keys = sorted(
+            key for key in t
+            if key.endswith("-dlurl") and key.removesuffix("-dlurl") not in SOURCES
+        )
+        if unsupported_dlurl_keys:
+            supported = ", ".join(f"{src}-dlurl" for src in SOURCES)
+            raise ValueError(
+                f"Unsupported download URL key(s) for '{table_name}': "
+                f"{', '.join(unsupported_dlurl_keys)}. Supported keys: {supported}"
+            )
+
         dl_urls: dict[str, str] = {}
         for src in SOURCES:
             url = t.get(f"{src}-dlurl")
             if isinstance(url, str):
                 dl_urls[src] = url.rstrip("/").removesuffix("download").rstrip("/")
+
+        if _parse_bool(t, "enabled", True) and not dl_urls:
+            raise ValueError(
+                f"Enabled app '{table_name}' has no supported APK download source; "
+                "configure apkmirror-dlurl or github-dlurl"
+            )
 
         raw_patches = t.get("patches", {})
         if not isinstance(raw_patches, dict):
