@@ -1,4 +1,6 @@
-## [nvbangg/builder-for-morphe](https://github.com/nvbangg/builder-for-morphe)
+## builder-for-morphe (Zudin987 fork)
+
+Based on [nvbangg/builder-for-morphe](https://github.com/nvbangg/builder-for-morphe); original `uni-apks` attribution and GPLv3 notices are preserved.
 
 <div align="center">
 Here you will find a step-by-step technical guide on how to set up your environment, run the patching script, customize the build configuration, and contribute to the project's development.
@@ -43,7 +45,7 @@ By default, GitHub does not allow syncing changes in workflows, and you will hav
 2. 📥 **Installation**:
 
 ```bash
-git clone --depth 1 https://github.com/nvbangg/builder-for-morphe.git
+git clone --depth 1 https://github.com/Zudin987/builder-for-morphe.git
 cd builder-for-morphe
 ```
 
@@ -87,6 +89,10 @@ apkmirror-dlurl = "https://www.apkmirror.com/apk/inc/app"
 # Full form - pin a specific version and/or list patches to include
 "github:owner/some-other-patches" = { version = "v1.2.3", include = ["Patch name C"] }
 ```
+
+**Stock APK sources:** only `apkmirror-dlurl` and `github-dlurl` are implemented. A `github-dlurl` must target an existing package-specific GitHub release tag with a matching APK asset. Uptodown links are not supported and are intentionally absent from the bundled configuration. Disabled apps without a stock APK source need one before you enable them.
+
+**Patch-source warning:** `gitlab:Paresh-Maheshwari/paresh-patches` is archived/read-only. Telegram, Truecaller and other Paresh entries retain the historical bundle for compatible app versions; there is no verified maintained replacement in this fork.
 
 1. 📱 **Available options**:
 
@@ -172,14 +178,8 @@ If no keystore is configured, `morphe.keystore` is used as a fallback if it exis
 
 ## 🤝 Contributing
 
-1. 🐞 **Bug reports**:
+This fork currently has **Issues and Discussions disabled**. Please [open a pull request](https://github.com/Zudin987/builder-for-morphe/pulls) for a reproducible fix or concrete improvement. Include the failing app, source URL, log excerpts with secrets removed, and the verification you performed.
 
-For bugs in the **build script itself**, use the [Script Bug Report](https://github.com/krvstek/uni-apks/issues/new?template=script.yml) template. For bugs in **patched applications**, use the [Build Result Bug Report](https://github.com/krvstek/uni-apks/issues/new?template=build.yml) template.
+If a defect originates in the original `uni-apks` code rather than this fork's configuration, you may also discuss it with the original maintainers; don't send fork-specific APK reports to their tracker.
 
-2. **💡 Suggestions**:
-
-Feature ideas belong in the [Discussions](https://github.com/krvstek/uni-apks/discussions) tab, as this keeps the issue tracker focused on bugs.
-
-3. **🛠️ Pull Requests**:
-
-Pull requests are welcome. AI-assisted contributions are accepted, but all changes must be manually reviewed before submitting, as you are responsible for every line you put your name on. I reserve the right to reject any contribution that does not align with the project's vision. By submitting a pull request, you agree to license your contribution under the terms of the GNU GPLv3 license.
+Pull requests are welcome. AI-assisted contributions are accepted, but all changes must be manually reviewed before submitting. You are responsible for changes submitted under your name. Contributions remain subject to the GNU GPLv3.
