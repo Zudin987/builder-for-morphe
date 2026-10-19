@@ -70,7 +70,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APP_UPDATE_WATCH_EXCLUDE: Proton-VPN_rushi
           PUBLISH_BUILD_PUSH: ${{ startsWith(github.event.head_commit.message, '[publish builds]') }}
-          PUBLISH_WAZE_PUSH: ${{ startsWith(github.event.head_commit.message, '[publish waze]') }}
+          PUBLISH_FIXES_PUSH: ${{ startsWith(github.event.head_commit.message, '[publish fixes]') }}
         shell: bash
         run: |
           set -euo pipefail
@@ -81,10 +81,11 @@ jobs:
             # compatible X version is confirmed, and paresh because its patch
             # source is archived.
             BRANDS='["morphe","rushi","hooman","de-vanced","bufferk","xtra"]'
-          elif [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$PUBLISH_WAZE_PUSH" = "true" ]; then
-            # Allow a targeted retry when a source-specific fix is merged after
-            # the main refresh already published its other brands.
-            BRANDS='["rushi"]'
+          elif [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$PUBLISH_FIXES_PUSH" = "true" ]; then
+            # Refresh the maintained Waze source and current Brave patch bundle.
+            # Brave's existing same-day release is reused for a guarded asset-only
+            # hotfix; existing APKs are preserved.
+            BRANDS='["rushi","bufferk"]'
           elif [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.force_build }}" = "true" ]; then
             BRANDS="$(uv run python -m src.scripts.matrix get-matrix-force)"
           else
