@@ -291,7 +291,7 @@ jobs:
           echo "uploaded_apk_count=$uploaded_apk_count" >> "$GITHUB_OUTPUT"
 
       - name: Upload build log to exact draft release
-        if: ${{ always() && (github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]') || startsWith(github.event.head_commit.message, '[publish fixes]')) && (needs.prepare.outputs.reuse_published != 'true' || steps.upload_apks.outputs.uploaded_apk_count != '0') }}
+        if: ${{ always() && (github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]') || startsWith(github.event.head_commit.message, '[publish fixes]')) && (needs.prepare.outputs.reuse_published != 'true' || (steps.upload_apks.outputs.uploaded_apk_count != '' && steps.upload_apks.outputs.uploaded_apk_count != '0')) }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
