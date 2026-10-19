@@ -65,6 +65,7 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       version: ${{ steps.version.outputs.version }}
       release_id: ${{ steps.version.outputs.release_id }}
+      reuse_published: ${{ steps.version.outputs.reuse_published }}
       prerelease: ${{ steps.set-matrix.outputs.prerelease }}
     steps:
       - name: Checkout
@@ -87,22 +88,31 @@ jobs:
         run: uv sync --frozen
 
       - name: Prepare clean draft release
-        if: ${{ github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]') || startsWith(github.event.head_commit.message, '[publish waze]') }}
+        if: ${{ github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]') || startsWith(github.event.head_commit.message, '[publish fixes]') }}
         id: version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PATCH_SOURCE: ${{ inputs.patch_source }}
+          PUBLISH_FIXES_PUSH: ${{ startsWith(github.event.head_commit.message, '[publish fixes]') }}
         shell: bash
         run: |
           set -euo pipefail
           source .github/scripts/gh_retry.sh
 
-          VER="$(date +%y.%m.%d)-${{ inputs.patch_source }}"
+          VER="$(date +%y.%m.%d)-${PATCH_SOURCE}"
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
 
           RELEASES_JSON="$(gh_retry api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100")"
-          # A second run on the same day must not delete an already published release.
+          # Same-day published releases are immutable except for an explicit,
+          # narrowly scoped source-fix hotfix that appends a new compatible APK.
           PUBLISHED_ID="$(jq -r --arg ver "$VER" '.[] | select(.tag_name == $ver and .draft == false) | .id' <<<"$RELEASES_JSON" | head -n1)"
           if [[ -n "$PUBLISHED_ID" ]]; then
+            if [[ "$PUBLISH_FIXES_PUSH" == "true" && "$PATCH_SOURCE" == "bufferk" ]]; then
+              echo "reuse_published=true" >> "$GITHUB_OUTPUT"
+              echo "release_id=$PUBLISHED_ID" >> "$GITHUB_OUTPUT"
+              echo "::notice::Reusing $VER (ID $PUBLISHED_ID) for an explicit Brave compatibility hotfix; existing APK assets will be preserved."
+              exit 0
+            fi
             echo "::error::Release $VER is already published (ID $PUBLISHED_ID); refusing to replace it."
             exit 1
           fi
@@ -121,6 +131,7 @@ jobs:
           test -n "$RELEASE_ID"
           test "$RELEASE_ID" != "null"
           echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
+          echo "reuse_published=false" >> "$GITHUB_OUTPUT"
           echo "Prepared release $RELEASE_ID for $VER"
 
       - name: Set matrix based on patch source
@@ -166,6 +177,8 @@ jobs:
 
   run:
     needs: prepare
+    outputs:
+      uploaded_apk_count: ${{ steps.upload_apks.outputs.uploaded_apk_count }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -232,7 +245,8 @@ jobs:
         run: bash .github/scripts/run_build_resilient.sh ${{ matrix.id }} ${{ matrix.arch }}
 
       - name: Upload APKs to exact draft release
-        if: ${{ always() && (github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]') || startsWith(github.event.head_commit.message, '[publish waze]')) }}
+        id: upload_apks
+        if: ${{ always() && (github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]') || startsWith(github.event.head_commit.message, '[publish fixes]')) }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
@@ -244,6 +258,7 @@ jobs:
           shopt -s nullglob
           apks=(./build/*.apk)
           if [[ ${#apks[@]} -eq 0 ]]; then
+            echo "uploaded_apk_count=0" >> "$GITHUB_OUTPUT"
             echo "No APKs to upload, skipping"
             exit 0
           fi
@@ -268,12 +283,15 @@ jobs:
             echo "Uploaded $name"
           }
 
+          uploaded_apk_count=0
           for apk in "${apks[@]}"; do
             upload_asset "$apk"
+            uploaded_apk_count=$((uploaded_apk_count + 1))
           done
+          echo "uploaded_apk_count=$uploaded_apk_count" >> "$GITHUB_OUTPUT"
 
       - name: Upload build log to exact draft release
-        if: ${{ always() && (github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]') || startsWith(github.event.head_commit.message, '[publish waze]')) }}
+        if: ${{ always() && (github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]') || startsWith(github.event.head_commit.message, '[publish fixes]')) && (needs.prepare.outputs.reuse_published != 'true' || steps.upload_apks.outputs.uploaded_apk_count != '0') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
@@ -302,7 +320,7 @@ jobs:
 
   release:
     needs: [prepare, run]
-    if: ${{ !cancelled() && (github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]') || startsWith(github.event.head_commit.message, '[publish waze]')) }}
+    if: ${{ !cancelled() && (github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]') || startsWith(github.event.head_commit.message, '[publish fixes]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -330,12 +348,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+          REUSE_PUBLISHED: ${{ needs.prepare.outputs.reuse_published }}
+          UPLOADED_APK_COUNT: ${{ needs.run.outputs.uploaded_apk_count }}
         shell: bash
         run: |
           set -euo pipefail
           source .github/scripts/gh_retry.sh
-          has=$(gh_retry api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
-            --jq '[.assets[].name | select(endswith(".apk"))] | length > 0')
+          if [[ "$REUSE_PUBLISHED" == "true" ]]; then
+            has=false
+            [[ "${UPLOADED_APK_COUNT:-0}" -gt 0 ]] && has=true
+          else
+            has=$(gh_retry api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+              --jq '[.assets[].name | select(endswith(".apk"))] | length > 0')
+          fi
           echo "has_apks=${has}" >> "$GITHUB_OUTPUT"
           echo "Release has APKs: $has"
 
@@ -394,7 +419,7 @@ jobs:
         run: uv run python -m src.scripts.telegram notify '${{ inputs.patch_source }}'
 
       - name: Delete empty draft if no APKs
-        if: steps.check.outputs.has_apks != 'true'
+        if: steps.check.outputs.has_apks != 'true' && needs.prepare.outputs.reuse_published != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
