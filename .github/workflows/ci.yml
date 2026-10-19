@@ -69,26 +69,35 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APP_UPDATE_WATCH_EXCLUDE: Proton-VPN_rushi
+          PUBLISH_BUILD_PUSH: ${{ startsWith(github.event.head_commit.message, '[publish builds]') }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.force_build }}" = "true" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$PUBLISH_BUILD_PUSH" = "true" ]; then
+            # Only rebuild groups with a verified update path. Skip metra
+            # because today's release already exists, piko because no newer
+            # compatible X version is confirmed, and paresh because its patch
+            # source is archived.
+            BRANDS='["morphe","rushi","hooman","de-vanced","bufferk","xtra"]'
+          elif [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.force_build }}" = "true" ]; then
             BRANDS="$(uv run python -m src.scripts.matrix get-matrix-force)"
+          else
+            BRANDS=""
+          fi
+
+          if [ -n "$BRANDS" ]; then
             MATRIX="$(jq -cn --argjson brands "$BRANDS" '
               $brands | map({
-                patch_source: ., 
+                patch_source: .,
                 build_patch_apps: true,
                 filter_changelog: false,
                 target_apps: []
               })
             ')"
           else
-            # Patch releases stay brand-level because one patch release may affect
-            # several apps. The fork-owned watcher compares upstream patch releases
-            # only against the newest published Obtainium-visible build for each brand.
-            # Compatible app-version changes are tracked by exact app ID, so an update
-            # to Reddit does not rebuild YouTube/YT Music as well.
+            # Scheduled runs rebuild only compatible app versions detected by
+            # the patch-source and app-version watchers.
             PATCH_BRANDS="$(uv run python .github/scripts/check_patch_updates.py)"
             APP_UPDATES="$(uv run python .github/scripts/check_app_updates.py)"
             MATRIX="$(jq -cn \

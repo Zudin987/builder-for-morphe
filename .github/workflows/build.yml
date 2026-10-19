@@ -87,7 +87,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Prepare clean draft release
-        if: github.event_name != 'push'
+        if: ${{ github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]') }}
         id: version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -203,6 +203,24 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
+      - name: Start Cloudflare challenge solver
+        shell: bash
+        run: |
+          set -uo pipefail
+          if ! docker run -d --name cf-solver -p 8000:8000 ghcr.io/sarperavci/cloudflarebypassforscraping:latest; then
+            echo "::warning::Could not start the Cloudflare challenge solver; APKMirror downloads may be blocked."
+            exit 0
+          fi
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:8000/docs >/dev/null; then
+              echo "Cloudflare challenge solver is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs cf-solver || true
+          echo "::warning::Cloudflare challenge solver did not become ready; APKMirror downloads may be blocked."
+
       - name: Build APKs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -214,7 +232,7 @@ jobs:
         run: bash .github/scripts/run_build_resilient.sh ${{ matrix.id }} ${{ matrix.arch }}
 
       - name: Upload APKs to exact draft release
-        if: always() && github.event_name != 'push'
+        if: ${{ always() && (github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]')) }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
@@ -255,7 +273,7 @@ jobs:
           done
 
       - name: Upload build log to exact draft release
-        if: always() && github.event_name != 'push'
+        if: ${{ always() && (github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]')) }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
@@ -284,7 +302,7 @@ jobs:
 
   release:
     needs: [prepare, run]
-    if: ${{ !cancelled() && github.event_name != 'push' }}
+    if: ${{ !cancelled() && (github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
