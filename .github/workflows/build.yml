@@ -87,7 +87,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Prepare clean draft release
-        if: ${{ github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]') }}
+        if: ${{ github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]') || startsWith(github.event.head_commit.message, '[publish waze]') }}
         id: version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -232,7 +232,7 @@ jobs:
         run: bash .github/scripts/run_build_resilient.sh ${{ matrix.id }} ${{ matrix.arch }}
 
       - name: Upload APKs to exact draft release
-        if: ${{ always() && (github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]')) }}
+        if: ${{ always() && (github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]') || startsWith(github.event.head_commit.message, '[publish waze]')) }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
@@ -273,7 +273,7 @@ jobs:
           done
 
       - name: Upload build log to exact draft release
-        if: ${{ always() && (github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]')) }}
+        if: ${{ always() && (github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]') || startsWith(github.event.head_commit.message, '[publish waze]')) }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
@@ -302,7 +302,7 @@ jobs:
 
   release:
     needs: [prepare, run]
-    if: ${{ !cancelled() && (github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]')) }}
+    if: ${{ !cancelled() && (github.event_name != 'push' || startsWith(github.event.head_commit.message, '[publish builds]') || startsWith(github.event.head_commit.message, '[publish waze]')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
