@@ -95,7 +95,7 @@ class ConfigSourceTests(unittest.TestCase):
         self.assertIn("startsWith(github.event.head_commit.message, '[publish waze]')", workflow)
         ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         self.assertIn("PUBLISH_WAZE_PUSH", ci)
-        self.assertIn('BRANDS='["rushi"]'', ci)
+        self.assertIn("BRANDS='[\"rushi\"]'", ci)
 
 
 if __name__ == "__main__":
