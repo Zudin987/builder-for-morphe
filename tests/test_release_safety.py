@@ -16,6 +16,15 @@ class ReleaseSafetyTests(unittest.TestCase):
         self.assertIn("select(.tag_name == $ver and .draft == true)", prepare)
         self.assertLess(prepare.index('if [[ -n "$PUBLISHED_ID" ]]'), prepare.index("gh_retry api --method DELETE"))
 
+    def test_same_day_hotfix_reuses_only_brave_release_and_preserves_existing_assets(self):
+        prepare = WORKFLOW.split("Prepare clean draft release", 1)[1].split("Set matrix based on patch source", 1)[0]
+        self.assertIn("PUBLISH_FIXES_PUSH", prepare)
+        self.assertIn("PATCH_SOURCE", prepare)
+        self.assertIn("reuse_published=true", prepare)
+        self.assertIn("uploaded_apk_count", WORKFLOW)
+        self.assertIn("UPLOADED_APK_COUNT", WORKFLOW)
+        self.assertIn("reuse_published != ", WORKFLOW)
+
     def test_publication_and_notification_require_all_builds_to_succeed(self):
         release = WORKFLOW.split("  release:\n", 1)[1]
         for name in (
