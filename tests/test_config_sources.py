@@ -100,7 +100,7 @@ class ConfigSourceTests(unittest.TestCase):
         self.assertIn("Start Cloudflare challenge solver", workflow)
         self.assertIn("ghcr.io/sarperavci/cloudflarebypassforscraping:latest", workflow)
         self.assertIn("startsWith(github.event.head_commit.message, '[publish builds]')", workflow)
-        self.assertIn("startsWith(github.event.head_commit.message, '[publish fixes')", workflow)
+        self.assertIn("startsWith(github.event.head_commit.message, '[publish fixes]')", workflow)
         ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         self.assertIn("PUBLISH_FIXES_PUSH", ci)
         self.assertIn("bufferk", ci)
