@@ -58,6 +58,33 @@ class ConfigSourceTests(unittest.TestCase):
         self.assertFalse(entries[0].enabled)
         self.assertEqual(entries[0].dl_urls, {})
 
+    def test_primary_apps_track_experimental_compatible_versions(self):
+        data = load_toml(CONFIG)
+        entries = {entry.table: entry for entry in parse_app_entries(data, parse_config(data))}
+        for app in ("YouTube", "YT-Music", "Reddit"):
+            with self.subTest(app=app):
+                entry = entries[app]
+                self.assertTrue(entry.enabled)
+                self.assertEqual(entry.version, "exp")
+                self.assertEqual(
+                    entry.patches["github:MorpheApp/morphe-patches"]["version"],
+                    "dev",
+                )
+
+    def test_pinned_apps_are_released_back_to_compatibility_watcher(self):
+        data = load_toml(CONFIG)
+        entries = {entry.table: entry for entry in parse_app_entries(data, parse_config(data))}
+        for app in ("Waze", "Brave", "Backdrops"):
+            with self.subTest(app=app):
+                self.assertTrue(entries[app].enabled)
+                self.assertEqual(entries[app].version, "auto")
+
+    def test_build_workflow_starts_cloudflare_solver_and_requires_explicit_publish_marker(self):
+        workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8")
+        self.assertIn("Start Cloudflare challenge solver", workflow)
+        self.assertIn("ghcr.io/sarperavci/cloudflarebypassforscraping:latest", workflow)
+        self.assertIn("startsWith(github.event.head_commit.message, '[publish builds]')", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
