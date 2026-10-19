@@ -79,11 +79,31 @@ class ConfigSourceTests(unittest.TestCase):
                 self.assertTrue(entries[app].enabled)
                 self.assertEqual(entries[app].version, "auto")
 
+    def test_waze_uses_dedicated_current_patch_bundle(self):
+        data = load_toml(CONFIG)
+        entries = {entry.table: entry for entry in parse_app_entries(data, parse_config(data))}
+        waze = entries["Waze"]
+        self.assertTrue(waze.enabled)
+        self.assertEqual(waze.version, "auto")
+        self.assertIn("github:Forsigh/waze-patches", waze.patches)
+
+    def test_brave_uses_patch_source_with_current_supported_version(self):
+        data = load_toml(CONFIG)
+        entries = {entry.table: entry for entry in parse_app_entries(data, parse_config(data))}
+        brave = entries["Brave"]
+        self.assertTrue(brave.enabled)
+        self.assertEqual(brave.version, "auto")
+        self.assertIn("github:kveld9/kveld-morphe-patches", brave.patches)
+
     def test_build_workflow_starts_cloudflare_solver_and_requires_explicit_publish_marker(self):
         workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8")
         self.assertIn("Start Cloudflare challenge solver", workflow)
         self.assertIn("ghcr.io/sarperavci/cloudflarebypassforscraping:latest", workflow)
         self.assertIn("startsWith(github.event.head_commit.message, '[publish builds]')", workflow)
+        self.assertIn("startsWith(github.event.head_commit.message, '[publish fixes]')", workflow)
+        ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        self.assertIn("PUBLISH_FIXES_PUSH", ci)
+        self.assertIn("\"rushi\",\"bufferk\"", ci)
 
 
 if __name__ == "__main__":
