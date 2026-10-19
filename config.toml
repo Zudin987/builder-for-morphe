@@ -916,7 +916,8 @@ apkmirror-dlurl = "https://www.apkmirror.com/apk/brave-software/brave-browser/"
 changelog-keywords = ["Brave"]
 
 [Brave.patches]
-"github:bufferk/morphe-patches" = []
+# v2.7.0 explicitly supports Brave 1.97.57; the old bufferk source only targeted 1.92.140.
+"github:kveld9/kveld-morphe-patches" = []
 
 [Backdrops]
 enabled = true
