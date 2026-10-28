@@ -45,7 +45,7 @@ class StockAvailabilityFixTests(unittest.TestCase):
             self.assertEqual(result.path, dest)
             self.assertFalse(result.is_bundle)
             network.get.assert_called_once()
-            self.assertIn("/tag/v1.98.60", network.get.call_args.args[0])
+            self.assertEqual(network.get.call_args.args[0], "https://api.github.com/repos/brave/brave-browser/releases/tags/v1.98.60")
             self.assertEqual(network.download.call_args.args[0], "https://example.invalid/BraveMonoarm64.apk")
 
     def test_brave_does_not_use_official_mapping_for_untrusted_repo(self):
