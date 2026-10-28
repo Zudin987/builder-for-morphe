@@ -130,7 +130,7 @@ class APKMirrorScraper(BaseScraper):
 
                 arch_text = cells[1].get_text(strip=True)
                 dpi_text = cells[3].get_text(strip=True)
-                dpi_ok = not dpi_text or re.match(r"\d+-640dpi", dpi_text) or dpi_text in {"nodpi", "anydpi"} or (dpi and dpi_text == dpi)
+                dpi_ok = not dpi or not dpi_text or re.match(r"\d+-640dpi", dpi_text) or dpi_text in {"nodpi", "anydpi"} or dpi_text == dpi
                 if b_type == bundle_type and arch_text in apparch and dpi_ok:
                     return urljoin("https://www.apkmirror.com", str(link["href"])), bundle_type
         return None
