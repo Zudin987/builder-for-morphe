@@ -1,5 +1,6 @@
 # ---------------------------------------------------------
 # Copyright (C) 2026 krvstek
+# Copyright (C) 2026 The uni-apks Contributors (Modifications)
 # 
 # DO NOT REMOVE OR ALTER THIS COPYRIGHT HEADER.
 # This file is part of uni-apks.
@@ -55,6 +56,10 @@ class GitHubScraper(BaseScraper):
         return AppMetadata(pkg_name=pkg_name, versions=list(seen) or [tag])
 
     def download(self, url: str, version: str, dest: Path, arch: str, dpi: str, version_code: str | None = None) -> DownloadResult:
+        # Some official projects publish stock APKs under their versioned
+        # release tag rather than including a version in each asset filename.
+        if "{version}" in url:
+            url = url.replace("{version}", version.replace(" ", "").lstrip("v"))
         if not self._assets:
             self.fetch_metadata(url)
 
@@ -77,6 +82,23 @@ class GitHubScraper(BaseScraper):
 
             asset = a
             break
+
+        if asset is None:
+            # Brave's official Monochrome APKs use names without version or
+            # standard architecture suffixes. Only accept them from the exact
+            # official repo and version tag, never from unrelated releases.
+            release_match = _GH_URL.search(url)
+            if (
+                release_match is not None
+                and release_match.group(1).lower() == "brave"
+                and release_match.group(2).lower() == "brave-browser"
+                and release_match.group(3).removeprefix("v") == version_f
+            ):
+                official_name = {
+                    "arm64-v8a": "BraveMonoarm64.apk",
+                    "armeabi-v7a": "BraveMonoarm.apk",
+                }.get(arch)
+                asset = next((a for a in apk_assets if a["name"] == official_name), None)
 
         if asset is None:
             raise GitHubReleasesError(f"No matching variant found for arch '{arch}'")
