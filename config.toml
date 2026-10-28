@@ -912,6 +912,9 @@ app-name = "Brave"
 arch = "arm64-v8a"
 
 apkmirror-dlurl = "https://www.apkmirror.com/apk/brave-software/brave-browser/"
+# The supported Brave Monochrome variant is distributed in official releases,
+# not necessarily on APKMirror. The tag tracks the patch-required version.
+github-dlurl = "https://github.com/brave/brave-browser/releases/tag/v{version}"
 
 changelog-keywords = ["Brave"]
 
