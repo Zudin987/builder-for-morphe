@@ -12,6 +12,8 @@
 # See the AUTHORS file in the root directory for details.
 # ---------------------------------------------------------
 
+import hashlib
+import hmac
 import json
 import re
 from pathlib import Path
@@ -65,45 +67,65 @@ class GitHubScraper(BaseScraper):
 
         version_f = version.replace(" ", "").lstrip("v")
         apk_assets = [a for a in self._assets if a["name"].endswith((".apk", ".apkm"))]
-        asset = None
-        for a in apk_assets:
-            name = a["name"]
-            if version_f and version_f not in name:
-                continue
+        release_match = _GH_URL.search(url)
+        is_official_brave = (
+            release_match is not None
+            and url == f"https://github.com/brave/brave-browser/releases/tag/v{version_f}"
+            and release_match.group(1).lower() == "brave"
+            and release_match.group(2).lower() == "brave-browser"
+            and release_match.group(3) == f"v{version_f}"
+        )
 
-            m = _ARCH_SUFFIX.search(name)
-            file_arch = m.group(1).lower() if m and m.group(1) else "all"
-            if arch in ("all", "both"):
-                if file_arch != "all":
+        if is_official_brave:
+            # Match only the supported, architecture-specific official Brave
+            # Monochrome asset; never select a similarly named release asset.
+            official_name = {
+                "arm64-v8a": "BraveMonoarm64.apk",
+                "armeabi-v7a": "BraveMonoarm.apk",
+            }.get(arch)
+            asset = next((a for a in apk_assets if a["name"] == official_name), None)
+        else:
+            asset = None
+            for a in apk_assets:
+                name = a["name"]
+                if version_f and version_f not in name:
                     continue
-            else:
-                if file_arch not in (arch, "all"):
+
+                m = _ARCH_SUFFIX.search(name)
+                file_arch = m.group(1).lower() if m and m.group(1) else "all"
+                if arch in ("all", "both"):
+                    if file_arch != "all":
+                        continue
+                elif file_arch not in (arch, "all"):
                     continue
 
-            asset = a
-            break
-
-        if asset is None:
-            # Brave's official Monochrome APKs use names without version or
-            # standard architecture suffixes. Only accept them from the exact
-            # official repo and version tag, never from unrelated releases.
-            release_match = _GH_URL.search(url)
-            if (
-                release_match is not None
-                and release_match.group(1).lower() == "brave"
-                and release_match.group(2).lower() == "brave-browser"
-                and release_match.group(3).removeprefix("v") == version_f
-            ):
-                official_name = {
-                    "arm64-v8a": "BraveMonoarm64.apk",
-                    "armeabi-v7a": "BraveMonoarm.apk",
-                }.get(arch)
-                asset = next((a for a in apk_assets if a["name"] == official_name), None)
+                asset = a
+                break
 
         if asset is None:
             raise GitHubReleasesError(f"No matching variant found for arch '{arch}'")
 
+        if is_official_brave:
+            # GitHub's official release API publishes the SHA-256 digest of
+            # each asset. Verify it before patching because Brave currently
+            # lacks an independently verified signer entry in sig.txt.
+            digest = asset.get("digest")
+            if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-fA-F]{64}", digest):
+                raise GitHubReleasesError("Official Brave release asset has no valid SHA-256 digest")
+            expected_url = (
+                f"https://github.com/brave/brave-browser/releases/download/"
+                f"v{version_f}/{asset['name']}"
+            )
+            if asset.get("browser_download_url") != expected_url:
+                raise GitHubReleasesError("Official Brave APK asset URL is not trusted")
+
         is_bundle = asset["name"].endswith(".apkm")
         out_path = dest.with_suffix(".apkm") if is_bundle else dest
         self.net.download(asset["browser_download_url"], out_path, headers=self.net._gh_headers | {"Accept": "application/octet-stream"})
+        if is_official_brave:
+            with out_path.open("rb") as apk:
+                actual_digest = hashlib.file_digest(apk, "sha256").hexdigest()
+            if not hmac.compare_digest(actual_digest, digest[7:].lower()):
+                out_path.unlink(missing_ok=True)
+                raise GitHubReleasesError("Official Brave APK SHA-256 digest mismatch")
         return DownloadResult(path=out_path, is_bundle=is_bundle)

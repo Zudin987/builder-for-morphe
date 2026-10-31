@@ -64,6 +64,28 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
+      - name: Start Cloudflare challenge solver for version checks
+        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.force_build) }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          # The app watcher also reads APKMirror pages, which can require the
+          # same local solver already used in the APK build jobs.
+          if ! docker run -d --name cf-solver -p 8000:8000 ghcr.io/sarperavci/cloudflarebypassforscraping:latest; then
+            echo "::error::Cloudflare challenge solver could not start; refusing an incomplete app-version check."
+            exit 1
+          fi
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:8000/docs >/dev/null; then
+              echo "Cloudflare challenge solver is ready for version checks"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs cf-solver || true
+          echo "::error::Cloudflare challenge solver did not become ready; refusing an incomplete app-version check."
+          exit 1
+
       - name: Get build matrix
         id: get-matrix
         env:
