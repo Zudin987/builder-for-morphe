@@ -67,9 +67,10 @@ class GitHubScraper(BaseScraper):
 
         version_f = version.replace(" ", "").lstrip("v")
         apk_assets = [a for a in self._assets if a["name"].endswith((".apk", ".apkm"))]
-        release_match = _GH_URL.fullmatch(url)
+        release_match = _GH_URL.search(url)
         is_official_brave = (
             release_match is not None
+            and url == f"https://github.com/brave/brave-browser/releases/tag/v{version_f}"
             and release_match.group(1).lower() == "brave"
             and release_match.group(2).lower() == "brave-browser"
             and release_match.group(3) == f"v{version_f}"
