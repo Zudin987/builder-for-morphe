@@ -95,6 +95,13 @@ class ConfigSourceTests(unittest.TestCase):
         self.assertEqual(brave.version, "auto")
         self.assertIn("github:kveld9/kveld-morphe-patches", brave.patches)
 
+    def test_brave_downloads_only_the_supported_official_variant(self):
+        data = load_toml(CONFIG)
+        entries = {entry.table: entry for entry in parse_app_entries(data, parse_config(data))}
+        self.assertEqual(entries["Brave"].dl_urls, {
+            "github": "https://github.com/brave/brave-browser/releases/tag/v{version}",
+        })
+
     def test_build_workflow_starts_cloudflare_solver_and_requires_explicit_publish_marker(self):
         workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text(encoding="utf-8")
         self.assertIn("Start Cloudflare challenge solver", workflow)

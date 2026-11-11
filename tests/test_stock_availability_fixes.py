@@ -5,10 +5,12 @@ import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from bs4 import BeautifulSoup
 
+from src.core.builder import _download_apk, _find_pkg_name, _resolve_version
+from src.core.config import load_toml, parse_app_entries, parse_config
 from src.scrapers.apkmirror import APKMirrorScraper
 from src.scrapers.github import GitHubReleasesError, GitHubScraper
 
@@ -25,6 +27,7 @@ def _brave_network(*, payload=BRAVE_FIXTURE, digest=None, url=None):
         url = "https://github.com/brave/brave-browser/releases/download/v1.98.60/BraveMonoarm64.apk"
     network.get.return_value = json.dumps({
         "name": "Release v1.98.60",
+        "tag_name": "v1.98.60",
         "assets": [
             {"name": "BraveMonoarm64.apk", "digest": digest, "browser_download_url": url},
             {"name": "BraveMonoarm.apk", "browser_download_url": "https://example.invalid/BraveMonoarm.apk"},
@@ -39,6 +42,79 @@ def _brave_network(*, payload=BRAVE_FIXTURE, digest=None, url=None):
 
 
 class StockAvailabilityFixTests(unittest.TestCase):
+    def test_brave_discovery_and_download_use_patch_required_official_release(self):
+        data = load_toml(Path(__file__).resolve().parents[1] / "config.toml")
+        brave = next(e for e in parse_app_entries(data, parse_config(data)) if e.table == "Brave")
+        network = _brave_network()
+        target_release = json.loads(network.get.return_value)
+        latest_release = {
+            "name": "Brave Release v1.99.1",
+            "tag_name": "v1.99.1",
+            "assets": [{"name": "BraveMonoarm64.apk", "browser_download_url": "https://example.invalid/latest.apk"}],
+        }
+        network.get.side_effect = lambda url, **_kwargs: json.dumps(
+            latest_release if url.endswith("/releases/latest") else target_release
+        )
+        scrapers = {"github": GitHubScraper(network)}
+        patcher = Mock()
+        patcher.get_last_supported_version.return_value = ("1.98.60", None)
+        with TemporaryDirectory() as tmp, patch("src.core.builder.TEMP_DIR", Path(tmp)):
+            pkg_name, source, failed = _find_pkg_name(brave, scrapers)
+            self.assertEqual(pkg_name, "com.brave.browser")
+            self.assertEqual(source, "github")
+            self.assertEqual(failed, set())
+            version, vcode, force = _resolve_version(
+                brave, patcher, "patches", pkg_name, source, scrapers, brave.arch,
+            )
+            self.assertEqual(version, "1.98.60")
+            self.assertFalse(force)
+            result = _download_apk(
+                brave, version, brave.arch, pkg_name, scrapers, source, failed, vcode,
+            )
+            self.assertFalse(result.is_bundle)
+            self.assertEqual(result.path.read_bytes(), BRAVE_FIXTURE)
+
+        self.assertEqual([call.args[0] for call in network.get.call_args_list], [
+            "https://api.github.com/repos/brave/brave-browser/releases/latest",
+            "https://api.github.com/repos/brave/brave-browser/releases/tags/v1.98.60",
+        ])
+        self.assertEqual(
+            network.download.call_args.args[0],
+            "https://github.com/brave/brave-browser/releases/download/v1.98.60/BraveMonoarm64.apk",
+        )
+
+    def test_brave_metadata_uses_package_name_and_release_tag(self):
+        network = Mock()
+        network._gh_headers = {}
+        network.get.return_value = json.dumps({
+            "name": "Brave Release v1.98.63 (Chromium build)",
+            "tag_name": "v1.98.63",
+            "assets": [],
+        })
+        metadata = GitHubScraper(network).fetch_metadata(
+            "https://github.com/brave/brave-browser/releases/tag/v{version}",
+        )
+        self.assertEqual(metadata.pkg_name, "com.brave.browser")
+        self.assertEqual(metadata.versions, ["1.98.63"])
+        self.assertEqual(network.get.call_args.args[0],
+                         "https://api.github.com/repos/brave/brave-browser/releases/latest")
+
+    def test_brave_download_refreshes_assets_when_target_version_changes(self):
+        network = _brave_network()
+        first_release = json.loads(network.get.return_value)
+        next_release = json.loads(network.get.return_value.replace("1.98.60", "1.98.63"))
+        network.get.side_effect = [json.dumps(first_release), json.dumps(next_release)]
+        scraper = GitHubScraper(network)
+        with TemporaryDirectory() as tmp:
+            for version in ("1.98.60", "1.98.63"):
+                scraper.download(
+                    "https://github.com/brave/brave-browser/releases/tag/v{version}",
+                    version, Path(tmp) / f"{version}.apk", "arm64-v8a", "",
+                )
+        self.assertEqual(network.get.call_count, 2)
+        self.assertEqual(network.download.call_args.args[0],
+                         "https://github.com/brave/brave-browser/releases/download/v1.98.63/BraveMonoarm64.apk")
+
     def test_apkmirror_allows_dpi_when_unspecified(self):
         markup = """
         <div class="table-row headerFont">
