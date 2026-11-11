@@ -1,0 +1,25 @@
+name: Publish requested Obtainium apps
+on:
+  push:
+    branches: [publish/obtainium-apps-20261111]
+permissions:
+  contents: write
+jobs:
+  publish:
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - source: xtra
+            targets: '["Speedtest-by-Ookla"]'
+          - source: venus
+            targets: '["Discord"]'
+    uses: ./.github/workflows/build.yml
+    with:
+      patch_source: ${{ matrix.source }}
+      build_patch_apps: false
+      filter_changelog: false
+      target_apps: ${{ matrix.targets }}
+      tolerate_stock_unavailable: false
+    secrets: inherit
