@@ -911,15 +911,15 @@ app-name = "Brave"
 
 arch = "arm64-v8a"
 
-apkmirror-dlurl = "https://www.apkmirror.com/apk/brave-software/brave-browser/"
-# The supported Brave Monochrome variant is distributed in official releases,
-# not necessarily on APKMirror. The tag tracks the patch-required version.
+# These patches require the official Monochrome APK. APKMirror bundles and
+# Universal builds are incompatible, so do not configure them as fallbacks.
+# The tag tracks the patch-required version, not the newest Brave release.
 github-dlurl = "https://github.com/brave/brave-browser/releases/tag/v{version}"
 
 changelog-keywords = ["Brave"]
 
 [Brave.patches]
-# v2.7.0 explicitly supports Brave 1.97.57; the old bufferk source only targeted 1.92.140.
+# Follow the current bundle's declared compatible Brave version.
 "github:kveld9/kveld-morphe-patches" = []
 
 [Backdrops]

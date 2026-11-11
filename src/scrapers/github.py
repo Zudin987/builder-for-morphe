@@ -23,6 +23,8 @@ from src.scrapers.base import AppMetadata, BaseScraper, DownloadResult, ScraperE
 
 _ARCH_SUFFIX = re.compile(r"(?:-(all|arm64-v8a|armeabi-v7a|x86_64|x86))?(?:\.apk\.apkm|\.apk|\.apkm)$", re.I)
 _GH_URL = re.compile(r"github\.com/([^/]+)/([^/]+)/releases/tag/([^/]+)")
+_BRAVE_TEMPLATE = "https://github.com/brave/brave-browser/releases/tag/v{version}"
+_BRAVE_RELEASE = re.compile(r"https://github\.com/brave/brave-browser/releases/tag/v\d+(?:\.\d+)+")
 
 
 class GitHubReleasesError(ScraperError):
@@ -32,6 +34,7 @@ class GitHubScraper(BaseScraper):
     def __init__(self, net: NetworkManager) -> None:
         super().__init__(net)
         self._assets: list[dict] = []
+        self._assets_url: str | None = None
 
     def fetch_metadata(self, url: str) -> AppMetadata:
         m = _GH_URL.search(url)
@@ -39,7 +42,12 @@ class GitHubScraper(BaseScraper):
             raise GitHubReleasesError(f"Invalid GitHub release URL: {url}")
 
         owner, repo, tag = m.groups()
+        is_official_brave = url == _BRAVE_TEMPLATE or _BRAVE_RELEASE.fullmatch(url) is not None
         api_url = f"https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}"
+        if url == _BRAVE_TEMPLATE:
+            # Discovery needs the package identity before the patch bundle can
+            # select a compatible version. Downloads resolve the exact tag later.
+            api_url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
         try:
             release = json.loads(self.net.get(api_url, headers=self.net._gh_headers))
         except ResourceNotFoundError:
@@ -47,6 +55,13 @@ class GitHubScraper(BaseScraper):
 
         pkg_name = release.get("name") or tag
         self._assets = release.get("assets", [])
+        self._assets_url = url
+        if is_official_brave:
+            release_tag = release.get("tag_name", "")
+            if not re.fullmatch(r"v\d+(?:\.\d+)+", release_tag):
+                raise GitHubReleasesError("Official Brave release has no valid version tag")
+            return AppMetadata(pkg_name="com.brave.browser", versions=[release_tag[1:]])
+
         prefix = f"{pkg_name}-"
         seen: dict[str, None] = {}
         for asset in self._assets:
@@ -62,7 +77,9 @@ class GitHubScraper(BaseScraper):
         # release tag rather than including a version in each asset filename.
         if "{version}" in url:
             url = url.replace("{version}", version.replace(" ", "").lstrip("v"))
-        if not self._assets:
+        # Metadata discovery may have loaded a different release. Never reuse
+        # its assets when downloading the patch bundle's required version.
+        if self._assets_url != url:
             self.fetch_metadata(url)
 
         version_f = version.replace(" ", "").lstrip("v")
