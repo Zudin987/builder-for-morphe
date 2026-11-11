@@ -557,14 +557,14 @@ changelog-keywords = ["RAR"]
 "github:rushiranpise/morphe-patches" = []
 
 [Speedtest-by-Ookla]
-enabled = false
-brand = "rushi"
+enabled = true
+brand = "xtra"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/ookla/speedtest/"
 arch = "both"
 changelog-keywords = ["Speedtest"]
 
 [Speedtest-by-Ookla.patches]
-"github:rushiranpise/morphe-patches" = []
+"github:BholeyKaBhakt/android-patches-xtra" = []
 
 [Splitwise]
 enabled = false
@@ -594,7 +594,7 @@ changelog-keywords = ["TV", "Remote"]
 "github:rushiranpise/morphe-patches" = []
 
 [Waze]
-enabled = true
+enabled = false
 brand = "rushi"
 
 arch = "arm64-v8a"
@@ -617,7 +617,7 @@ changelog-keywords = ["Windscribe"]
 "github:rushiranpise/morphe-patches" = []
 
 [Adobe-Acrobat-Reader] 
-enabled = true
+enabled = false
 brand = "hooman"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/adobe/adobe-acrobat/"
 changelog-keywords = ["Acrobat"]
@@ -934,3 +934,14 @@ changelog-keywords = ["Backdrops"]
 
 [Backdrops.patches]
 "github:BholeyKaBhakt/android-patches-xtra" = []
+
+[Discord]
+enabled = true
+brand = "venus"
+arch = "arm64-v8a"
+# Follow Venus's declared compatible Stable APKM, not Discord's newest release.
+apkmirror-dlurl = "https://www.apkmirror.com/apk/discord/discord-chat-for-gamers/"
+
+[Discord.patches]
+# Features are configured in Discord Settings > Venus > Features after install.
+"github:VenusIsJaded/Venus-Patches" = []

@@ -70,6 +70,14 @@ def _load_entries() -> list:
     data = load_toml(CONFIG_PATH)
     return parse_app_entries(data, parse_config(data))
 
+def enabled_brands(requested: list[str] | None = None) -> list[str]:
+    """Return enabled groups only, optionally restricted to a requested subset."""
+    active = list(dict.fromkeys(entry.brand.lower() for entry in _load_entries() if entry.enabled))
+    if requested is None:
+        return active
+    selected = {brand.lower() for brand in requested}
+    return [brand for brand in active if brand in selected]
+
 def get_matrix(source: str) -> None:
     source_lower = source.lower()
     filter_changelog = os.getenv("FILTER_CHANGELOG", "false").lower() == "true"
@@ -178,8 +186,8 @@ def main() -> None:
     match sys.argv[1:]:
         case ["get-matrix"]:
             check_builds_needed()
-        case ["get-matrix-force"]:
-            check_builds_needed(force_all=True)
+        case ["get-matrix-force", *requested]:
+            print(json.dumps(enabled_brands(requested or None)))
         case ["get-matrix", source]:
             get_matrix(source)
         case _:

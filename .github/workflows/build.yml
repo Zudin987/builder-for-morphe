@@ -20,6 +20,7 @@ on:
           - metra
           - bufferk
           - xtra
+          - venus
       build_patch_apps:
         description: 'Build apps selected by the patch-source update logic'
         required: true

@@ -52,9 +52,12 @@ def _parse_versions_output(output: str) -> list[str]:
     block = output.split(marker)[1].split("\n\n")[0]
     versions = []
     for line in block.splitlines():
-        parts = line.split()
-        if parts:
-            versions.append(parts[0])
+        # Version names can contain spaces, e.g. Discord "351.11 - Stable".
+        # Strip only CLI annotations, not the release channel from the name.
+        version = line.strip().split(" [versionCodes:", 1)[0]
+        version = re.sub(r"\s+\(\d+ patch(?:es)?\)\s*$", "", version)
+        if version:
+            versions.append(version)
     return versions
 
 def _extract_version_code(output: str, version: str, arch: str) -> str | None:

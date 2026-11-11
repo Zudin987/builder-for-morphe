@@ -74,16 +74,16 @@ class ConfigSourceTests(unittest.TestCase):
     def test_pinned_apps_are_released_back_to_compatibility_watcher(self):
         data = load_toml(CONFIG)
         entries = {entry.table: entry for entry in parse_app_entries(data, parse_config(data))}
-        for app in ("Waze", "Brave", "Backdrops"):
+        for app in ("Brave", "Backdrops"):
             with self.subTest(app=app):
                 self.assertTrue(entries[app].enabled)
                 self.assertEqual(entries[app].version, "auto")
 
-    def test_waze_uses_dedicated_current_patch_bundle(self):
+    def test_disabled_waze_retains_its_dedicated_patch_bundle(self):
         data = load_toml(CONFIG)
         entries = {entry.table: entry for entry in parse_app_entries(data, parse_config(data))}
         waze = entries["Waze"]
-        self.assertTrue(waze.enabled)
+        self.assertFalse(waze.enabled)
         self.assertEqual(waze.version, "auto")
         self.assertIn("github:Forsigh/waze-patches", waze.patches)
 
@@ -110,7 +110,7 @@ class ConfigSourceTests(unittest.TestCase):
         self.assertIn("startsWith(github.event.head_commit.message, '[publish fixes]')", workflow)
         ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         self.assertIn("PUBLISH_FIXES_PUSH", ci)
-        self.assertIn("\"rushi\",\"bufferk\"", ci)
+        self.assertIn("get-matrix-force rushi bufferk", ci)
 
 
 if __name__ == "__main__":

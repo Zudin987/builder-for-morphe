@@ -98,16 +98,14 @@ jobs:
           set -euo pipefail
 
           if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$PUBLISH_BUILD_PUSH" = "true" ]; then
-            # Only rebuild groups with a verified update path. Skip metra
-            # because today's release already exists, piko because no newer
-            # compatible X version is confirmed, and paresh because its patch
-            # source is archived.
-            BRANDS='["morphe","rushi","hooman","de-vanced","bufferk","xtra"]'
+            # Limit publication to maintained groups and intersect the list
+            # with enabled config entries. Disabled groups must never build.
+            BRANDS="$(uv run python -m src.scripts.matrix get-matrix-force morphe rushi hooman de-vanced bufferk xtra venus)"
           elif [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$PUBLISH_FIXES_PUSH" = "true" ]; then
-            # Refresh the maintained Waze source and current Brave patch bundle.
+            # Refresh compatibility hotfix groups only when still enabled.
             # Brave's existing same-day release is reused for a guarded asset-only
             # hotfix; existing APKs are preserved.
-            BRANDS='["rushi","bufferk"]'
+            BRANDS="$(uv run python -m src.scripts.matrix get-matrix-force rushi bufferk)"
           elif [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.force_build }}" = "true" ]; then
             BRANDS="$(uv run python -m src.scripts.matrix get-matrix-force)"
           else
