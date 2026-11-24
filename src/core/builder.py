@@ -19,7 +19,7 @@ import zipfile
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from enum import IntEnum
 from pathlib import Path
-from typing import NoReturn
+from typing import Never
 
 from src.core.config import BUILD_DIR, TEMP_DIR, AppEntry, Config
 from src.core.logger import IS_GITHUB, epr, is_interrupted, pr, wpr
@@ -50,7 +50,7 @@ def _make_scraper(source: str, net: NetworkManager) -> BaseScraper:
         case _:
             raise ValueError(f"Unknown APK source: {source!r}")
 
-def _raise_stock_failure(message: str, failures: dict[str, NetworkError | ScraperError]) -> NoReturn:
+def _raise_stock_failure(message: str, failures: dict[str, NetworkError | ScraperError]) -> Never:
     if failures and all(isinstance(exc, (NetworkError, StockUnavailableError)) for exc in failures.values()):
         raise StockUnavailableError(message)
     raise BuilderError(message)

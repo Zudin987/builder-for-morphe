@@ -1,6 +1,8 @@
 """Regression tests for stock APK availability and official Brave asset integrity."""
 
+import contextlib
 import hashlib
+import io
 import json
 import os
 import subprocess
@@ -237,6 +239,7 @@ class StockAvailabilityFixTests(unittest.TestCase):
                 scraper.download.side_effect = download
                 with (
                     TemporaryDirectory() as temp,
+                    contextlib.redirect_stderr(io.StringIO()),
                     patch("src.core.builder.TEMP_DIR", Path(temp)),
                     patch("src.core.builder._make_scraper", return_value=scraper),
                     patch("src.core.builder.fetch_cli"),
@@ -265,7 +268,7 @@ class StockAvailabilityFixTests(unittest.TestCase):
             ):
                 with self.subTest(status=status, tolerate=tolerate):
                     result = subprocess.run(
-                        ["bash", str(script), "Facebook-armv7"],
+                        ["bash", str(script), "Facebook", "armeabi-v7a"],
                         capture_output=True,
                         text=True,
                         env={
@@ -280,15 +283,13 @@ class StockAvailabilityFixTests(unittest.TestCase):
                     self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
                     self.assertEqual(result.stdout.count("Build attempt"), attempts)
 
-    def test_facebook_32_bit_workaround_is_scoped_to_its_own_build(self):
+    def test_facebook_config_targets_the_supported_arm64_variant(self):
         data = load_toml(Path("config.toml"))
-        entries = {entry.table: entry for entry in parse_app_entries(data, parse_config(data))}
-        arm64, armv7 = entries["Facebook"], entries["Facebook-armv7"]
+        facebook = next(entry for entry in parse_app_entries(data, parse_config(data)) if entry.table == "Facebook")
         source = "github:RookieEnough/De-Vanced"
-        self.assertEqual((arm64.arch, armv7.arch), ("arm64-v8a", "armeabi-v7a"))
-        self.assertEqual((arm64.app_name, arm64.brand), (armv7.app_name, armv7.brand))
-        self.assertEqual(arm64.patches[source]["exclude"], [])
-        self.assertEqual(armv7.patches[source]["exclude"], ["AMOLED dark theme"])
+        self.assertTrue(facebook.enabled)
+        self.assertEqual(facebook.arch, "arm64-v8a")
+        self.assertEqual(facebook.patches[source]["exclude"], [])
 
 
 if __name__ == "__main__":
