@@ -134,3 +134,57 @@ jobs:
             echo "::error::Possible secret material detected in tracked source."
             exit 1
           fi
+
+  facebook-build:
+    name: Validate Facebook 32-bit APK
+    if: github.event_name == 'pull_request' && github.head_ref == 'fix/ci-health-20261124'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Use preinstalled Java 21
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x "$JAVA_HOME_21_X64/bin/java"
+          echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_21_X64/bin" >> "$GITHUB_PATH"
+          "$JAVA_HOME_21_X64/bin/java" -version
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.0"
+          enable-cache: false
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Start Cloudflare challenge solver
+        shell: bash
+        run: |
+          set -uo pipefail
+          if ! docker run -d --name cf-solver -p 8000:8000 ghcr.io/sarperavci/cloudflarebypassforscraping:latest; then
+            echo "::warning::Could not start the Cloudflare challenge solver; APKMirror downloads may be blocked."
+            exit 0
+          fi
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:8000/docs >/dev/null; then
+              echo "Cloudflare challenge solver is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs cf-solver || true
+          echo "::warning::Cloudflare challenge solver did not become ready; APKMirror downloads may be blocked."
+
+      - name: Build Facebook 32-bit without publishing
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/scripts/run_build_resilient.sh Facebook-armv7
+          find build -maxdepth 1 -name 'facebook-de-vanced-*-armeabi-v7a.apk' -size +0c | grep -q .

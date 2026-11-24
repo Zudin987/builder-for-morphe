@@ -2,16 +2,23 @@
 
 import hashlib
 import json
+import os
+import subprocess
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 from bs4 import BeautifulSoup
 
-from src.core.builder import _download_apk, _find_pkg_name, _resolve_version
+from src.core.builder import BuildExit, _download_apk, _find_pkg_name, _resolve_version, run_build
 from src.core.config import load_toml, parse_app_entries, parse_config
+from src.core.logger import epr
+from src.core.network import NetworkError
+from src.core.patcher import PatcherError
 from src.scrapers.apkmirror import APKMirrorScraper
+from src.scrapers.base import AppMetadata, DownloadResult, StockUnavailableError
 from src.scrapers.github import GitHubReleasesError, GitHubScraper
 
 
@@ -62,7 +69,7 @@ class StockAvailabilityFixTests(unittest.TestCase):
             pkg_name, source, failed = _find_pkg_name(brave, scrapers)
             self.assertEqual(pkg_name, "com.brave.browser")
             self.assertEqual(source, "github")
-            self.assertEqual(failed, set())
+            self.assertEqual(failed, {})
             version, vcode, force = _resolve_version(
                 brave, patcher, "patches", pkg_name, source, scrapers, brave.arch,
             )
@@ -191,7 +198,7 @@ class StockAvailabilityFixTests(unittest.TestCase):
             {"name":"BraveMonoarm64.apk","browser_download_url":"https://example.invalid/wrong.apk"}
         ]}"""
         scraper = GitHubScraper(network)
-        with TemporaryDirectory() as tmp, self.assertRaises(GitHubReleasesError):
+        with TemporaryDirectory() as tmp, self.assertRaises(StockUnavailableError):
             scraper.download(
                 "https://github.com/untrusted/other/releases/tag/v{version}",
                 "1.98.60", Path(tmp) / "stock.apk", "arm64-v8a", "",
@@ -207,6 +214,81 @@ class StockAvailabilityFixTests(unittest.TestCase):
         )
         self.assertIn("http://127.0.0.1:8000/docs", workflow)
         self.assertIn("refusing an incomplete app-version check", workflow)
+
+    def test_build_exit_distinguishes_stock_outage_from_patching_and_integrity(self):
+        data = load_toml(Path("config.toml"))
+        config = replace(parse_config(data), parallel_jobs=1)
+        facebook = next(entry for entry in parse_app_entries(data, config) if entry.table == "Facebook")
+        stock = DownloadResult(Path("stock.apkm"), is_bundle=True)
+
+        def recovered_download(*args, **kwargs):
+            epr("JS challenge detected for APKMirror, attempting solver bypass")
+            return stock
+
+        for download, patch_failure, expected in (
+            (NetworkError("Request failed after 3 attempts"), None, BuildExit.STOCK_UNAVAILABLE),
+            (StockUnavailableError("No matching variant found"), None, BuildExit.STOCK_UNAVAILABLE),
+            (GitHubReleasesError("Official Brave APK SHA-256 digest mismatch"), None, BuildExit.FAILED),
+            (recovered_download, PatcherError('Patch "AMOLED dark theme" failed'), BuildExit.FAILED),
+        ):
+            with self.subTest(download=download, patch_failure=patch_failure):
+                scraper = Mock()
+                scraper.cached_metadata.return_value = AppMetadata("com.facebook.katana", ["580.0.0.51.74"])
+                scraper.download.side_effect = download
+                with (
+                    TemporaryDirectory() as temp,
+                    patch("src.core.builder.TEMP_DIR", Path(temp)),
+                    patch("src.core.builder._make_scraper", return_value=scraper),
+                    patch("src.core.builder.fetch_cli"),
+                    patch("src.core.builder.fetch_mpp"),
+                    patch("src.core.builder.PatcherCLI") as patcher,
+                    patch("src.core.builder._verify_sig"),
+                    patch("src.core.builder._apply_patch", side_effect=patch_failure) as apply_patch,
+                ):
+                    patcher.return_value.get_last_supported_version.return_value = ("580.0.0.51.74", None)
+                    self.assertEqual(run_build([facebook], config, Mock()), expected)
+                self.assertEqual(apply_patch.call_count, int(patch_failure is not None))
+
+    def test_ci_shell_retries_only_the_stock_unavailable_status(self):
+        script = Path(__file__).resolve().parents[1] / ".github/scripts/run_build_resilient.sh"
+        with TemporaryDirectory() as temp:
+            uv = Path(temp) / "uv"
+            uv.write_text(
+                '#!/usr/bin/env bash\necho "JS challenge detected"\nexit "$TEST_BUILD_STATUS"\n',
+                encoding="utf-8",
+            )
+            uv.chmod(0o755)
+            for status, tolerate, expected, attempts in (
+                (BuildExit.FAILED, "true", BuildExit.FAILED, 1),
+                (BuildExit.STOCK_UNAVAILABLE, "true", BuildExit.SUCCESS, 2),
+                (BuildExit.STOCK_UNAVAILABLE, "false", BuildExit.STOCK_UNAVAILABLE, 2),
+            ):
+                with self.subTest(status=status, tolerate=tolerate):
+                    result = subprocess.run(
+                        ["bash", str(script), "Facebook-armv7"],
+                        capture_output=True,
+                        text=True,
+                        env={
+                            **os.environ,
+                            "PATH": f"{temp}:{os.environ['PATH']}",
+                            "TEST_BUILD_STATUS": str(status),
+                            "TOLERATE_STOCK_UNAVAILABLE": tolerate,
+                            "BUILD_RETRY_DELAY": "0",
+                            "BUILD_ATTEMPTS": "2",
+                        },
+                    )
+                    self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+                    self.assertEqual(result.stdout.count("Build attempt"), attempts)
+
+    def test_facebook_32_bit_workaround_is_scoped_to_its_own_build(self):
+        data = load_toml(Path("config.toml"))
+        entries = {entry.table: entry for entry in parse_app_entries(data, parse_config(data))}
+        arm64, armv7 = entries["Facebook"], entries["Facebook-armv7"]
+        source = "github:RookieEnough/De-Vanced"
+        self.assertEqual((arm64.arch, armv7.arch), ("arm64-v8a", "armeabi-v7a"))
+        self.assertEqual((arm64.app_name, arm64.brand), (armv7.app_name, armv7.brand))
+        self.assertEqual(arm64.patches[source]["exclude"], [])
+        self.assertEqual(armv7.patches[source]["exclude"], ["AMOLED dark theme"])
 
 
 if __name__ == "__main__":
