@@ -17,20 +17,27 @@ import shutil
 import tempfile
 import zipfile
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from enum import IntEnum
 from pathlib import Path
+from typing import Never
 
 from src.core.config import BUILD_DIR, TEMP_DIR, AppEntry, Config
 from src.core.logger import IS_GITHUB, epr, is_interrupted, pr, wpr
 from src.core.network import NetworkError, NetworkManager
 from src.core.patcher import PatcherCLI, PatcherError, SignatureError
 from src.core.prebuilts import APKSIGNER, fetch_cli, fetch_mpp, get_highest_ver
-from src.scrapers.base import BaseScraper, DownloadResult, ScraperError
+from src.scrapers.base import BaseScraper, DownloadResult, ScraperError, StockUnavailableError
 
 _failed_signatures: set[str] = set()
 
 
 class BuilderError(Exception):
     pass
+
+class BuildExit(IntEnum):
+    SUCCESS = 0
+    FAILED = 1
+    STOCK_UNAVAILABLE = 75
 
 def _make_scraper(source: str, net: NetworkManager) -> BaseScraper:
     from src.scrapers.apkmirror import APKMirrorScraper
@@ -43,8 +50,13 @@ def _make_scraper(source: str, net: NetworkManager) -> BaseScraper:
         case _:
             raise ValueError(f"Unknown APK source: {source!r}")
 
-def _find_pkg_name(entry: AppEntry, scrapers: dict[str, BaseScraper]) -> tuple[str, str, set[str]]:
-    failed: set[str] = set()
+def _raise_stock_failure(message: str, failures: dict[str, NetworkError | ScraperError]) -> Never:
+    if failures and all(isinstance(exc, (NetworkError, StockUnavailableError)) for exc in failures.values()):
+        raise StockUnavailableError(message)
+    raise BuilderError(message)
+
+def _find_pkg_name(entry: AppEntry, scrapers: dict[str, BaseScraper]) -> tuple[str, str, dict[str, NetworkError | ScraperError]]:
+    failed: dict[str, NetworkError | ScraperError] = {}
     for src, url in entry.dl_urls.items():
         try:
             metadata = scrapers[src].cached_metadata(url)
@@ -52,8 +64,8 @@ def _find_pkg_name(entry: AppEntry, scrapers: dict[str, BaseScraper]) -> tuple[s
             return metadata.pkg_name, src, failed
         except (NetworkError, ScraperError) as exc:
             epr(f"Could not find '{entry.table}' in '{src}': {exc}")
-            failed.add(src)
-    raise BuilderError("Package name not found")
+            failed[src] = exc
+    _raise_stock_failure("Package name not found", failed)
 
 def _resolve_version(entry: AppEntry, patcher: PatcherCLI, list_patches: str, pkg_name: str, dl_from: str, scrapers: dict[str, BaseScraper], arch: str) -> tuple[str, str | None, bool]:
     vcode = None
@@ -63,7 +75,7 @@ def _resolve_version(entry: AppEntry, patcher: PatcherCLI, list_patches: str, pk
         versions = scrapers[dl_from].cached_metadata(entry.dl_urls[dl_from]).versions
         version = get_highest_ver(versions) if versions else ""
         if not version:
-            raise BuilderError("Could not determine version")
+            raise StockUnavailableError("Could not determine version")
         is_custom = True
     elif (v := patcher.get_last_supported_version(list_patches, pkg_name, entry.patches, arch=arch, experimental=entry.version == "exp")):
         version, vcode = v
@@ -72,14 +84,14 @@ def _resolve_version(entry: AppEntry, patcher: PatcherCLI, list_patches: str, pk
         versions = scrapers[dl_from].cached_metadata(entry.dl_urls[dl_from]).versions
         version = get_highest_ver(versions) if versions else ""
         if not version:
-            raise BuilderError("Could not determine version")
+            raise StockUnavailableError("Could not determine version")
         is_custom = entry.version != "auto"
 
     vcode_str = f" (versionCode: {vcode})" if vcode else ""
     pr(f"Choosing version '{version}'{vcode_str} for '{entry.table}'")
     return version, vcode, is_custom
 
-def _download_apk(entry: AppEntry, version: str, arch: str, pkg_name: str, scrapers: dict[str, BaseScraper], dl_from: str, failed_sources: set[str], version_code: str | None = None) -> DownloadResult:
+def _download_apk(entry: AppEntry, version: str, arch: str, pkg_name: str, scrapers: dict[str, BaseScraper], dl_from: str, failed_sources: dict[str, NetworkError | ScraperError], version_code: str | None = None) -> DownloadResult:
     arch_f = arch.replace(" ", "")
     version_f = version.replace(" ", "").lstrip("v")
     base_name = f"{pkg_name}-v{version_f}-{arch_f}.apk"
@@ -91,6 +103,7 @@ def _download_apk(entry: AppEntry, version: str, arch: str, pkg_name: str, scrap
     if stock_apkm.exists():
         return DownloadResult(path=stock_apkm, is_bundle=True)
 
+    failures = failed_sources.copy()
     ordered_sources = [dl_from] + [src for src in entry.dl_urls if src != dl_from]
     for src in ordered_sources:
         if src in failed_sources:
@@ -102,7 +115,8 @@ def _download_apk(entry: AppEntry, version: str, arch: str, pkg_name: str, scrap
             return scrapers[src].download(url, version, stock_apk, arch, entry.dpi, version_code=version_code)
         except (NetworkError, ScraperError) as exc:
             epr(f"Failed to fetch '{entry.table}' from '{src}' (version='{version}', arch='{arch}'): {exc}")
-    raise BuilderError("Stock APK not found")
+            failures[src] = exc
+    _raise_stock_failure("Stock APK not found", failures)
 
 def _extract_base_apk(apkm: Path, pkg_name: str, dest_dir: Path) -> Path:
     with zipfile.ZipFile(apkm, "r") as zf:
@@ -168,6 +182,9 @@ def _build_single(entry: AppEntry, arch: str, label: str, net: NetworkManager, p
         github_asset_name = re.sub(r"\.+", ".", re.sub(r"[^a-zA-Z0-9@+\-_.]", ".", apk_output.name))
         ver_str = f"[`{version}`](https://github.com/{os.getenv('GITHUB_REPOSITORY')}/releases/download/{{TAG}}/{github_asset_name})" if IS_GITHUB else f"`{version}`"
         return f"- 🟢 » {label}: {ver_str}"
+    except StockUnavailableError as exc:
+        wpr(f"Stock APK unavailable for '{label}': {exc}")
+        raise
     except (BuilderError, PatcherError, ScraperError, NetworkError, SignatureError) as exc:
         if isinstance(exc, SignatureError):
             _failed_signatures.add(entry.table)
@@ -222,10 +239,10 @@ def _submit_entries(entries: list[AppEntry], pool: ThreadPoolExecutor, net: Netw
             futures.append(pool.submit(_build_single, entry, arch, label, net, patcher, strict_sigcheck))
     return futures
 
-def run_build(entries: list[AppEntry], config: Config, net: NetworkManager) -> bool:
+def run_build(entries: list[AppEntry], config: Config, net: NetworkManager) -> BuildExit:
     if not entries:
         epr("No entries to build")
-        return False
+        return BuildExit.FAILED
 
     ks_path: Path | None = None
     if ks_b64 := os.getenv("KEYSTORE_BASE64"):
@@ -244,13 +261,20 @@ def run_build(entries: list[AppEntry], config: Config, net: NetworkManager) -> b
         shutil.rmtree(tmp, ignore_errors=True)
 
     log_lines: list[str] = []
+    unavailable = 0
     for fut in as_completed(futures):
-        if r := fut.result():
-            log_lines.append(r)
+        try:
+            if summary := fut.result():
+                log_lines.append(summary)
+        except StockUnavailableError:
+            unavailable += 1
 
     if not log_lines:
+        expected = sum(2 if entry.arch == "both" else 1 for entry in entries)
+        if unavailable == expected:
+            return BuildExit.STOCK_UNAVAILABLE
         epr("All builds failed")
-        return False
+        return BuildExit.FAILED
 
     raw = "".join(cl.read_text(encoding="utf-8") for cl in sorted(TEMP_DIR.glob("*/changelog.md")))
     block_re = re.compile(r"^> ⚙️ » (CLI|Patches):.*?(?=^> ⚙️ »|\Z)", re.MULTILINE | re.DOTALL)
@@ -262,4 +286,4 @@ def run_build(entries: list[AppEntry], config: Config, net: NetworkManager) -> b
     microg_line = "▶️ » Install [MicroG-RE](https://github.com/MorpheApp/MicroG-RE/releases) to enable Google account sign-in for supported apps\n"
     Path("build.md").write_text("\n".join([*log_lines, "", microg_line, changelogs]), encoding="utf-8")
     pr("Done")
-    return True
+    return BuildExit.SUCCESS

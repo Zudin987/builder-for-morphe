@@ -19,7 +19,7 @@ from urllib.parse import urlencode, urljoin
 from bs4 import BeautifulSoup
 
 from src.core.network import NetworkManager, ResourceNotFoundError
-from src.scrapers.base import AppMetadata, BaseScraper, DownloadResult, ScraperError, _parse_html
+from src.scrapers.base import AppMetadata, BaseScraper, DownloadResult, ScraperError, StockUnavailableError, _parse_html
 
 _DEFAULT_ARCH: frozenset[str] = frozenset({"universal", "noarch", "arm64-v8a + armeabi-v7a", "arm64-v8a + armeabi"})
 
@@ -73,19 +73,19 @@ class APKMirrorScraper(BaseScraper):
                     break
 
         if release_url is None:
-            raise APKMirrorError("Version not found")
+            raise StockUnavailableError("Version not found")
 
         try:
             release_html = self.net.get(release_url)
         except ResourceNotFoundError:
-            raise APKMirrorError("Version not found") from None
+            raise StockUnavailableError("Version not found") from None
 
         is_bundle = False
         soup_release = _parse_html(release_html)
         if soup_release.select_one("div.table-row.headerFont:last-child"):
             dl_url = self._pick_variant(soup_release, dpi, arch, version_code=version_code)
             if dl_url is None:
-                raise APKMirrorError("No matching variant found")
+                raise StockUnavailableError("No matching variant found")
             release_html = self.net.get(dl_url[0])
             is_bundle = dl_url[1] == "BUNDLE"
 

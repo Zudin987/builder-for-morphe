@@ -76,8 +76,7 @@ def _build(target_app: str | None = None, arch_override: str | None = None) -> i
 
     Path("build.md").write_text("", encoding="utf-8")
     with NetworkManager() as net:
-        success = run_build(entries, main_cfg, net)
-    return 0 if success else 1
+        return run_build(entries, main_cfg, net)
 
 def _clear() -> int:
     cleaned = False

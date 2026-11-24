@@ -735,7 +735,8 @@ apkmirror-dlurl = "https://www.apkmirror.com/apk/disney/disney/"
 enabled = true
 brand = "de-vanced"
 apkmirror-dlurl = "https://www.apkmirror.com/apk/facebook-2/facebook/"
-arch = "both"
+# De-Vanced 1.6.4 declares only ARM64 for Facebook 580.0.0.51.74.
+arch = "arm64-v8a"
 
 [Facebook.patches]
 "github:RookieEnough/De-Vanced" = []

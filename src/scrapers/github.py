@@ -19,7 +19,7 @@ import re
 from pathlib import Path
 
 from src.core.network import NetworkManager, ResourceNotFoundError
-from src.scrapers.base import AppMetadata, BaseScraper, DownloadResult, ScraperError
+from src.scrapers.base import AppMetadata, BaseScraper, DownloadResult, ScraperError, StockUnavailableError
 
 _ARCH_SUFFIX = re.compile(r"(?:-(all|arm64-v8a|armeabi-v7a|x86_64|x86))?(?:\.apk\.apkm|\.apk|\.apkm)$", re.I)
 _GH_URL = re.compile(r"github\.com/([^/]+)/([^/]+)/releases/tag/([^/]+)")
@@ -51,7 +51,7 @@ class GitHubScraper(BaseScraper):
         try:
             release = json.loads(self.net.get(api_url, headers=self.net._gh_headers))
         except ResourceNotFoundError:
-            raise GitHubReleasesError(f"Release tag '{tag}' not found in '{owner}/{repo}'") from None
+            raise StockUnavailableError(f"Release tag '{tag}' not found in '{owner}/{repo}'") from None
 
         pkg_name = release.get("name") or tag
         self._assets = release.get("assets", [])
@@ -120,7 +120,7 @@ class GitHubScraper(BaseScraper):
                 break
 
         if asset is None:
-            raise GitHubReleasesError(f"No matching variant found for arch '{arch}'")
+            raise StockUnavailableError(f"No matching variant found for arch '{arch}'")
 
         if is_official_brave:
             # GitHub's official release API publishes the SHA-256 digest of

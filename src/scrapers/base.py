@@ -26,6 +26,9 @@ def _parse_html(html: str) -> BeautifulSoup:
 class ScraperError(Exception):
     """Raised for scraper-layer failures: DOM parsing, regex mismatches, missing assets"""
 
+class StockUnavailableError(ScraperError):
+    """The requested stock version or variant could not be obtained."""
+
 @dataclass(slots=True, frozen=True)
 class AppMetadata:
     pkg_name: str
