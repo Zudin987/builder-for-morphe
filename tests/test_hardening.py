@@ -9,10 +9,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from src.core.config import AppEntry, parse_app_entries, parse_config
-from src.core.prebuilts import PrebuiltsError, _get_target_asset, _verify_digest, get_highest_ver
+from src.core.prebuilts import PrebuiltsError, _get_target_asset, _verify_digest, fetch_latest_release_info, fetch_mpp, get_highest_ver
 from src.scrapers.apkmirror import APKMirrorError, APKMirrorScraper
 
 
@@ -60,6 +60,44 @@ class FakeNet:
 
 
 class HardeningTests(unittest.TestCase):
+    def test_forgejo_can_watch_and_download_a_release_without_github_credentials(self):
+        source = "forgejo:forge.example/owner/patches"
+        latest_url = "https://forge.example/api/v1/repos/owner/patches/releases/latest"
+        asset_url = "https://forge.example/owner/patches/releases/download/v2.12.1/patches-2.12.1.mpp"
+        release = {
+            "tag_name": "v2.12.1",
+            "body": "Update Brave compatibility",
+            "published_at": "2026-11-24T21:32:10-03:00",
+            "assets": [{"name": "patches-2.12.1.mpp", "browser_download_url": asset_url}],
+        }
+        net = Mock()
+        net.get.return_value = json.dumps(release)
+        net._gh_headers = {"Authorization": "test-token"}
+        net.download.side_effect = lambda url, path: path.write_bytes(b"patch bundle")
+
+        self.assertEqual(
+            fetch_latest_release_info(source, net),
+            ("Update Brave compatibility", "2026-11-24T21:32:10-03:00"),
+        )
+        net.get.assert_called_once_with(latest_url)
+        net.get.reset_mock()
+        with tempfile.TemporaryDirectory() as tmp, patch("src.core.prebuilts.TEMP_DIR", Path(tmp)):
+            asset = fetch_mpp(source, "latest", net)
+            self.assertEqual(asset.read_bytes(), b"patch bundle")
+            self.assertIn(
+                "https://forge.example/owner/patches/releases/tag/v2.12.1",
+                (asset.parent / "changelog.md").read_text(encoding="utf-8"),
+            )
+            net.get.assert_called_once_with(latest_url)
+            net.download.assert_called_once_with(asset_url, asset)
+
+            net.download.reset_mock()
+            release["assets"][0]["browser_download_url"] = "https://untrusted.example/patches-2.12.1.mpp"
+            net.get.return_value = json.dumps(release)
+            with self.assertRaisesRegex(PrebuiltsError, "Unexpected Forgejo asset URL"):
+                fetch_mpp(source, "latest", net)
+            net.download.assert_not_called()
+
     def test_watcher_resolves_both_architectures(self):
         seen: list[str] = []
 

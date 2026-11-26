@@ -20,29 +20,12 @@ from datetime import datetime
 from src.core.config import CONFIG_PATH, load_toml, parse_app_entries, parse_config
 from src.core.logger import IS_GITHUB, abort, epr
 from src.core.network import NetworkManager, ResourceNotFoundError
+from src.core.prebuilts import fetch_latest_release_info
 
 
 def _require_ci(script: str) -> None:
     if not IS_GITHUB:
         abort(f"'{script}' is only available in GitHub Actions")
-
-def _fetch_latest_release(source: str, net: NetworkManager, version: str = "latest") -> tuple[str, str]:
-    scheme, clean_src = source.split(":", 1)
-    if scheme == "gitlab":
-        project = clean_src.replace("/", "%2F")
-        upstream_rel = json.loads(net.get(f"https://gitlab.com/api/v4/projects/{project}/releases/permalink/latest"))
-        changelog_text = upstream_rel.get("description", "") or ""
-        upstream_date = upstream_rel.get("released_at", "") or ""
-    elif version == "dev":
-        releases = json.loads(net.get(f"https://api.github.com/repos/{clean_src}/releases?per_page=1", headers=net._gh_headers))
-        upstream_rel = releases[0] if releases else {}
-        changelog_text = upstream_rel.get("body", "") or ""
-        upstream_date = upstream_rel.get("published_at", "") or ""
-    else:
-        upstream_rel = json.loads(net.get(f"https://api.github.com/repos/{clean_src}/releases/latest", headers=net._gh_headers))
-        changelog_text = upstream_rel.get("body", "") or ""
-        upstream_date = upstream_rel.get("published_at", "") or ""
-    return changelog_text, upstream_date
 
 def _fetch_our_releases(repo: str, net: NetworkManager) -> dict[str, str]:
     """Return last successful build timestamp per brand, including draft releases.
@@ -104,7 +87,7 @@ def get_matrix(source: str) -> None:
                 our_releases_by_brand = _fetch_our_releases(repo, net)
                 if our_releases_by_brand.get(source_lower, ""):
                     try:
-                        changelog_text, _ = _fetch_latest_release(patches_source, net)
+                        changelog_text, _ = fetch_latest_release_info(patches_source, net)
                     except Exception as exc:
                         epr(f"Failed to fetch changelog for '{patches_source}': {exc}")
 
@@ -159,7 +142,7 @@ def check_builds_needed(force_all: bool = False) -> None:
         for brand, patches_source in seen.items():
             our_date = our_releases_by_brand.get(brand, "")
             try:
-                changelog_text, upstream_date = _fetch_latest_release(patches_source, net, version="dev" if brand in dev_brands else "latest")
+                changelog_text, upstream_date = fetch_latest_release_info(patches_source, net, version="dev" if brand in dev_brands else "latest")
             except ResourceNotFoundError:
                 epr(f"No upstream release found for '{patches_source}', skipping brand '{brand}'")
                 continue

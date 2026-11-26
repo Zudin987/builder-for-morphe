@@ -13,36 +13,9 @@ if str(REPO_ROOT) not in sys.path:
 from src.core.config import CONFIG_PATH, load_toml, parse_app_entries, parse_config  # noqa: E402
 from src.core.logger import epr  # noqa: E402
 from src.core.network import NetworkManager, ResourceNotFoundError  # noqa: E402
+from src.core.prebuilts import fetch_latest_release_info  # noqa: E402
 
 MAX_RELEASE_PAGES = 5
-
-
-def _fetch_latest_patch_release(source: str, net: NetworkManager, version: str = "latest") -> tuple[str, str]:
-    scheme, clean_src = source.split(":", 1)
-    if scheme == "gitlab":
-        project = clean_src.replace("/", "%2F")
-        upstream_rel = json.loads(
-            net.get(f"https://gitlab.com/api/v4/projects/{project}/releases/permalink/latest")
-        )
-        return upstream_rel.get("description", "") or "", upstream_rel.get("released_at", "") or ""
-
-    if version == "dev":
-        releases = json.loads(
-            net.get(
-                f"https://api.github.com/repos/{clean_src}/releases?per_page=1",
-                headers=net._gh_headers,
-            )
-        )
-        upstream_rel = releases[0] if releases else {}
-    else:
-        upstream_rel = json.loads(
-            net.get(
-                f"https://api.github.com/repos/{clean_src}/releases/latest",
-                headers=net._gh_headers,
-            )
-        )
-
-    return upstream_rel.get("body", "") or "", upstream_rel.get("published_at", "") or ""
 
 
 def _parse_date(value: str) -> datetime:
@@ -126,7 +99,7 @@ def main() -> None:
                 continue
 
             try:
-                changelog_text, upstream_date = _fetch_latest_patch_release(
+                changelog_text, upstream_date = fetch_latest_release_info(
                     patches_source,
                     net,
                     version="dev" if brand in dev_brands else "latest",
