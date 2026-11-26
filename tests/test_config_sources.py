@@ -93,7 +93,7 @@ class ConfigSourceTests(unittest.TestCase):
         brave = entries["Brave"]
         self.assertTrue(brave.enabled)
         self.assertEqual(brave.version, "auto")
-        self.assertIn("github:kveld9/kveld-morphe-patches", brave.patches)
+        self.assertIn("forgejo:git.kvkdns.org/kveld9/kveld-morphe-patches", brave.patches)
 
     def test_brave_downloads_only_the_supported_official_variant(self):
         data = load_toml(CONFIG)

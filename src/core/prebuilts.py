@@ -16,13 +16,14 @@ import hashlib
 import json
 import re
 from pathlib import Path
+from urllib.parse import quote
 
 from src.core.config import TEMP_DIR
 from src.core.logger import pr
 from src.core.network import NetworkManager
 
 APKSIGNER: Path = Path("bin/apksigner.jar")
-_KNOWN_PREFIXES = ("gitlab:", "github:")
+_KNOWN_PREFIXES = ("gitlab:", "github:", "forgejo:")
 
 
 class PrebuiltsError(Exception):
@@ -51,6 +52,45 @@ def _strip_src_prefix(src: str) -> str:
             return src.removeprefix(prefix)
     raise PrebuiltsError(f"Unknown source scheme in {src!r}, expected one of {_KNOWN_PREFIXES}")
 
+def _release_endpoints(src: str) -> tuple[str, str]:
+    project = _strip_src_prefix(src)
+    if src.startswith("gitlab:"):
+        return (
+            f"https://gitlab.com/api/v4/projects/{quote(project, safe='')}/releases",
+            f"https://gitlab.com/{project}/-/releases",
+        )
+    if src.startswith("forgejo:"):
+        match = re.fullmatch(r"([A-Za-z0-9][A-Za-z0-9.-]*)/([\w.-]+/[\w.-]+)", project, re.ASCII)
+        if not match or any(part in {".", ".."} for part in match[2].split("/")):
+            raise PrebuiltsError(f"Invalid Forgejo source {src!r}; expected forgejo:host/owner/repo")
+        host, repo = match.groups()
+        return f"https://{host}/api/v1/repos/{repo}/releases", f"https://{host}/{repo}/releases"
+    return f"https://api.github.com/repos/{project}/releases", f"https://github.com/{project}/releases"
+
+def _read_release_json(src: str, url: str, net: NetworkManager) -> dict | list:
+    if src.startswith("github:"):
+        return json.loads(net.get(url, headers=net._gh_headers))
+    return json.loads(net.get(url))
+
+def fetch_latest_release_info(src: str, net: NetworkManager, version: str = "latest") -> tuple[str, str]:
+    api_url, _ = _release_endpoints(src)
+    if src.startswith("gitlab:"):
+        release = _read_release_json(src, f"{api_url}/permalink/latest", net)
+        return release.get("description", "") or "", release.get("released_at", "") or ""
+    if version == "dev":
+        limit = "limit=1" if src.startswith("forgejo:") else "per_page=1"
+        releases = _read_release_json(src, f"{api_url}?{limit}", net)
+        release = releases[0] if releases else {}
+    else:
+        release = _read_release_json(src, f"{api_url}/latest", net)
+    return release.get("body", "") or "", release.get("published_at", "") or ""
+
+def _prebuilt_directory(src: str) -> Path:
+    _release_endpoints(src)
+    parts = _strip_src_prefix(src).split("/")
+    directory = "-".join(parts[:2]) if src.startswith("forgejo:") else parts[0]
+    return TEMP_DIR / directory.lower()
+
 def get_highest_ver(versions: list[str]) -> str:
     clean = [v.strip() for v in versions if v.strip()]
     if not clean:
@@ -58,8 +98,7 @@ def get_highest_ver(versions: list[str]) -> str:
     return max(clean, key=_ver_key)
 
 def fetch_cli(cli_src: str, cli_ver: str, net: NetworkManager) -> Path:
-    cli_org = _strip_src_prefix(cli_src).split("/")[0]
-    cli_dir = TEMP_DIR / cli_org.lower()
+    cli_dir = _prebuilt_directory(cli_src)
     cli_dir.mkdir(parents=True, exist_ok=True)
     jar, changelog = _fetch_single_asset(cli_src, "CLI", cli_ver, "jar", cli_dir, net)
     if changelog:
@@ -68,8 +107,7 @@ def fetch_cli(cli_src: str, cli_ver: str, net: NetworkManager) -> Path:
     return jar
 
 def fetch_mpp(src: str, ver: str, net: NetworkManager) -> Path:
-    org = _strip_src_prefix(src).split("/")[0]
-    cl_dir = TEMP_DIR / org.lower()
+    cl_dir = _prebuilt_directory(src)
     cl_dir.mkdir(parents=True, exist_ok=True)
     mpp, changelog = _fetch_single_asset(src, "Patches", ver, "mpp", cl_dir, net)
     if changelog:
@@ -115,61 +153,67 @@ def _verify_digest(file: Path, digest: str | None, src: str, ver: str) -> None:
             f"SHA-256 mismatch for {src} @ {ver}: expected {expected.lower()}, got {actual.lower()}"
         )
 
-def _build_changelog(tag: str, org: str, name: str, tag_name: str, gitlab: bool, clean_src: str) -> str:
+def _build_changelog(tag: str, org: str, name: str, release_url: str) -> str:
     changelog = f"> ⚙️ » {tag}: `{org}/{name}`  \n"
-    if tag == "Patches" and tag_name:
-        if gitlab:
-            changelog += f"[🔗 » Changelog](https://gitlab.com/{clean_src}/-/releases/{tag_name})\n\n"
-        else:
-            changelog += f"[🔗 » Changelog](https://github.com/{clean_src}/releases/tag/{tag_name})\n\n"
+    if tag == "Patches" and release_url:
+        changelog += f"[🔗 » Changelog]({release_url})\n\n"
     return changelog
 
 def _fetch_single_asset(src: str, tag: str, ver: str, ext: str, cl_dir: Path, net: NetworkManager) -> tuple[Path, str]:
     gitlab = src.startswith("gitlab:")
-    clean_src = _strip_src_prefix(src)
-    org = clean_src.split("/")[0]
-    if gitlab:
-        project = clean_src.replace("/", "%2F")
-        base_url = f"https://gitlab.com/api/v4/projects/{project}/releases"
-    else:
-        base_url = f"https://api.github.com/repos/{clean_src}/releases"
+    forgejo = src.startswith("forgejo:")
+    base_url, web_url = _release_endpoints(src)
+    org = _strip_src_prefix(src).split("/")[1 if forgejo else 0]
 
     release = None
     if ver == "dev":
-        releases = json.loads(net.get(base_url) if gitlab else net.get(base_url, headers=net._gh_headers))
+        releases = _read_release_json(src, base_url, net)
         ver = get_highest_ver([r["tag_name"] for r in releases if r.get("tag_name")])
     elif ver == "latest":
         latest_url = f"{base_url}/permalink/latest" if gitlab else f"{base_url}/latest"
-        release = json.loads(net.get(latest_url) if gitlab else net.get(latest_url, headers=net._gh_headers))
+        release = _read_release_json(src, latest_url, net)
         ver = release.get("tag_name", "")
 
     if release is None:
-        release_url = f"{base_url}/{ver}" if gitlab else f"{base_url}/tags/{ver}"
-        release = json.loads(net.get(release_url) if gitlab else net.get(release_url, headers=net._gh_headers))
+        lookup_tag = quote(ver, safe="")
+        release_url = f"{base_url}/{lookup_tag}" if gitlab else f"{base_url}/tags/{lookup_tag}"
+        release = _read_release_json(src, release_url, net)
 
     raw_assets = release.get("assets", {}).get("links", []) if gitlab else release.get("assets", [])
     asset = _get_target_asset(raw_assets, ext, src, ver)
+    tag_name = release.get("tag_name", "")
+    encoded_tag = quote(tag_name, safe="")
+    if forgejo:
+        expected_url = f"{web_url}/download/{encoded_tag}/{quote(asset['name'], safe='')}"
+        if (
+            not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", tag_name)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", asset["name"])
+            or asset.get("browser_download_url") != expected_url
+        ):
+            raise PrebuiltsError(f"Unexpected Forgejo asset URL or name for {src} @ {ver}")
+        asset_url = expected_url
+    else:
+        asset_url = (asset.get("direct_asset_url") or asset["url"]) if gitlab else asset["url"]
+    release_path = encoded_tag if gitlab else f"tag/{encoded_tag}"
+    changelog = _build_changelog(tag, org, asset["name"], f"{web_url}/{release_path}" if tag_name else "")
     file = cl_dir / asset["name"]
+    digest = None if gitlab else asset.get("digest")
 
     if file.exists():
-        _verify_digest(file, asset.get("digest") if not gitlab else None, src, ver)
-        tag_name = release.get("tag_name", "")
-        return file, _build_changelog(tag, org, asset["name"], tag_name, gitlab, clean_src)
+        _verify_digest(file, digest, src, ver)
+        return file, changelog
 
     for old_file in cl_dir.glob(f"*.{ext}"):
         if old_file.is_file() and not old_file.name.startswith("tmp."):
             old_file.unlink(missing_ok=True)
 
-    asset_url = (asset.get("direct_asset_url") or asset["url"]) if gitlab else asset["url"]
     pr(f"Getting '{asset['name']}' from '{asset_url}'")
-    if gitlab:
-        net.download(asset_url, file)
-    else:
+    if src.startswith("github:"):
         net.download(asset_url, file, headers=net._gh_headers | {"Accept": "application/octet-stream"})
-        _verify_digest(file, asset.get("digest"), src, ver)
-
-    tag_name = release.get("tag_name", "")
-    return file, _build_changelog(tag, org, asset["name"], tag_name, gitlab, clean_src)
+    else:
+        net.download(asset_url, file)
+    _verify_digest(file, digest, src, ver)
+    return file, changelog
 
 def _find_cached(dir_path: Path, name_ver: str, ext: str) -> Path | None:
     pattern = f"*.{ext}" if name_ver == "*" else f"*{name_ver.lstrip('v')}*.{ext}"

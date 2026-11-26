@@ -921,7 +921,7 @@ changelog-keywords = ["Brave"]
 
 [Brave.patches]
 # Follow the current bundle's declared compatible Brave version.
-"github:kveld9/kveld-morphe-patches" = []
+"forgejo:git.kvkdns.org/kveld9/kveld-morphe-patches" = []
 
 [Backdrops]
 enabled = true
