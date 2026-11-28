@@ -16,7 +16,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from urllib.parse import quote
+from typing import Any
 
 from src.core.config import TEMP_DIR
 from src.core.logger import pr
@@ -115,10 +115,10 @@ def fetch_mpp(src: str, ver: str, net: NetworkManager) -> Path:
             f.write(changelog)
     return mpp
 
-def _get_target_asset(assets: list, ext: str, src: str, ver: str) -> dict:
+def _get_target_asset(assets: list[dict[str, Any]], ext: str, src: str, ver: str) -> dict[str, Any]:
     suffix = f".{ext}"
-    matches: list[dict] = []
-    non_dev: list[dict] = []
+    matches: list[dict[str, Any]] = []
+    non_dev: list[dict[str, Any]] = []
     for a in assets:
         name = a.get("name", "")
         if not name.endswith(suffix):
@@ -167,17 +167,16 @@ def _fetch_single_asset(src: str, tag: str, ver: str, ext: str, cl_dir: Path, ne
 
     release = None
     if ver == "dev":
-        releases = _read_release_json(src, base_url, net)
+        releases = json.loads(net.get(base_url) if gitlab else net.get(base_url, headers=net.gh_headers))
         ver = get_highest_ver([r["tag_name"] for r in releases if r.get("tag_name")])
     elif ver == "latest":
         latest_url = f"{base_url}/permalink/latest" if gitlab else f"{base_url}/latest"
-        release = _read_release_json(src, latest_url, net)
+        release = json.loads(net.get(latest_url) if gitlab else net.get(latest_url, headers=net.gh_headers))
         ver = release.get("tag_name", "")
 
     if release is None:
-        lookup_tag = quote(ver, safe="")
-        release_url = f"{base_url}/{lookup_tag}" if gitlab else f"{base_url}/tags/{lookup_tag}"
-        release = _read_release_json(src, release_url, net)
+        release_url = f"{base_url}/{ver}" if gitlab else f"{base_url}/tags/{ver}"
+        release = json.loads(net.get(release_url) if gitlab else net.get(release_url, headers=net.gh_headers))
 
     raw_assets = release.get("assets", {}).get("links", []) if gitlab else release.get("assets", [])
     asset = _get_target_asset(raw_assets, ext, src, ver)
@@ -208,12 +207,13 @@ def _fetch_single_asset(src: str, tag: str, ver: str, ext: str, cl_dir: Path, ne
             old_file.unlink(missing_ok=True)
 
     pr(f"Getting '{asset['name']}' from '{asset_url}'")
-    if src.startswith("github:"):
-        net.download(asset_url, file, headers=net._gh_headers | {"Accept": "application/octet-stream"})
-    else:
+    if gitlab:
         net.download(asset_url, file)
-    _verify_digest(file, digest, src, ver)
-    return file, changelog
+    else:
+        net.download(asset_url, file, headers=net.gh_headers | {"Accept": "application/octet-stream"})
+
+    tag_name = release.get("tag_name", "")
+    return file, _build_changelog(tag, org, asset["name"], tag_name, gitlab, clean_src)
 
 def _find_cached(dir_path: Path, name_ver: str, ext: str) -> Path | None:
     pattern = f"*.{ext}" if name_ver == "*" else f"*{name_ver.lstrip('v')}*.{ext}"
